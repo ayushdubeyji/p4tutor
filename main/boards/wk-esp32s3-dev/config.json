@@ -1,5 +1,6 @@
 {
     "target": "esp32s3",
+    "type": "wk-esp32s3-dev",
     "builds": [
         {
             "name": "wk-esp32s3-dev"

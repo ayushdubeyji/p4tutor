@@ -59,7 +59,11 @@ def _run_idf(*args: str, preview: bool = False) -> None:
     if preview:
         command.append("--preview")
     command.extend(args)
-    if subprocess.run(command, check=False).returncode != 0:
+    if sys.platform == "win32":
+        ret = subprocess.run(" ".join(command), shell=True, check=False).returncode
+    else:
+        ret = subprocess.run(command, check=False).returncode
+    if ret != 0:
         print(f"{' '.join(command)} failed", file=sys.stderr)
         sys.exit(1)
 
