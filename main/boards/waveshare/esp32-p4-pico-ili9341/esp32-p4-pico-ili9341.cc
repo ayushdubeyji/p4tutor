@@ -80,7 +80,7 @@ private:
 
         esp_lcd_panel_io_i80_config_t io_config = {
             .cs_gpio_num = PIN_NUM_LCD_CS,
-            .pclk_hz = 10 * 1000 * 1000,
+            .pclk_hz = 5 * 1000 * 1000,
             .trans_queue_depth = 10,
             .lcd_cmd_bits = 8,
             .lcd_param_bits = 8,
@@ -103,6 +103,7 @@ private:
         esp_lcd_panel_init(disp_panel);
         esp_lcd_panel_invert_color(disp_panel, false);
         esp_lcd_panel_swap_xy(disp_panel, DISPLAY_SWAP_XY);
+        esp_lcd_panel_mirror(disp_panel, DISPLAY_MIRROR_X, DISPLAY_MIRROR_Y);
         esp_lcd_panel_disp_on_off(disp_panel, true);
 
         display_ = new SpiLcdDisplay(io, disp_panel, DISPLAY_WIDTH, DISPLAY_HEIGHT,
