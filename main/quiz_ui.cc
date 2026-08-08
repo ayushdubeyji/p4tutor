@@ -33,7 +33,7 @@ static void quiz_timer_cb(void* arg) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// UI factory helpers — keep object count low
+// UI factory helpers — iOS Light Glass Theme
 // ──────────────────────────────────────────────────────────────────────────────
 
 static lv_obj_t* make_panel(lv_obj_t* parent, uint32_t bg) {
@@ -65,20 +65,29 @@ static lv_obj_t* make_bar(lv_obj_t* parent, int x, int y, int w, int h,
     return b;
 }
 
-static lv_obj_t* make_hdr(lv_obj_t* parent, uint32_t bg, int h = 36) {
+static lv_obj_t* make_hdr(lv_obj_t* parent, int h = 36, bool bottom_border = true) {
     lv_obj_t* hdr = lv_obj_create(parent);
     if (!hdr) return nullptr;
     lv_obj_set_size(hdr, 320, h);
     lv_obj_set_pos(hdr, 0, 0);
-    lv_obj_set_style_bg_color(hdr, lv_color_hex(0x090E17), 0); // Dark BG
-    lv_obj_set_style_bg_opa(hdr, LV_OPA_80, 0); // Slight translucency for glass feeling
-    lv_obj_set_style_border_color(hdr, lv_color_hex(0x00E5FF), 0); // Cyan line
+    lv_obj_set_style_bg_color(hdr, lv_color_hex(0xFFFFFF), 0); // White
+    lv_obj_set_style_bg_opa(hdr, LV_OPA_80, 0); // Frosted Glass
+    lv_obj_set_style_border_color(hdr, lv_color_hex(0xE5E5EA), 0); // iOS separator
     lv_obj_set_style_border_width(hdr, 1, 0);
-    lv_obj_set_style_border_side(hdr, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_side(hdr, bottom_border ? LV_BORDER_SIDE_BOTTOM : LV_BORDER_SIDE_TOP, 0);
     lv_obj_set_style_radius(hdr, 0, 0);
     lv_obj_set_style_pad_all(hdr, 0, 0);
     lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
     return hdr;
+}
+
+static void apply_glass_card(lv_obj_t* card) {
+    lv_obj_set_style_bg_color(card, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_80, 0); // Transparent Frost
+    lv_obj_set_style_shadow_width(card, 0, 0); // Removed for performance & flat look
+    lv_obj_set_style_border_color(card, lv_color_hex(0xE5E5EA), 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_radius(card, 12, 0);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -94,7 +103,6 @@ QuizUI::~QuizUI() {
 void QuizUI::Initialize() {
     ESP_LOGI(TAG, "Initializing QuizUI (Landscape)");
 
-    // SPIFFS
     esp_vfs_spiffs_conf_t conf = {
         .base_path = "/mcq", .partition_label = "mcq_data",
         .max_files = 5, .format_if_mount_failed = false,
@@ -103,25 +111,18 @@ void QuizUI::Initialize() {
     if (ret == ESP_OK || ret == ESP_ERR_INVALID_STATE) LoadQuestions();
     else ESP_LOGE(TAG, "SPIFFS: %s", esp_err_to_name(ret));
 
-    // esp_timer for countdown
     esp_timer_create_args_t ta = { .callback = quiz_timer_cb, .arg = this, .name = "quiz" };
     esp_timer_create(&ta, &q_timer_);
 
-    // Root screen
     screen_ = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(screen_, lv_color_hex(kBg), 0);
     lv_obj_set_style_bg_opa(screen_, LV_OPA_COVER, 0);
 
-    // Only build home panel at startup — quiz/settings/progress are lazy
     BuildHomePanel();
     SwitchToPanel(home_panel_);
 
     ESP_LOGI(TAG, "QuizUI ready — %d questions", (int)questions_.size());
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
-// JSON loading
-// ──────────────────────────────────────────────────────────────────────────────
 
 void QuizUI::LoadQuestions() {
     std::ifstream f("/mcq/quiz.json");
@@ -149,27 +150,25 @@ void QuizUI::LoadQuestions() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Build: Home panel (Landscape: 320x240)
+// Build: Home panel
 // ──────────────────────────────────────────────────────────────────────────────
 
 void QuizUI::BuildHomePanel() {
     home_panel_ = make_panel(screen_, kBg);
-    if (!home_panel_) { ESP_LOGE(TAG, "OOM: home_panel_"); return; }
+    if (!home_panel_) return;
 
-    // Header bar
-    lv_obj_t* hdr = make_hdr(home_panel_, kPrimary, 70);
+    lv_obj_t* hdr = make_hdr(home_panel_, 70, true);
 
     h_title_lbl_ = lv_label_create(hdr);
     lv_label_set_text(h_title_lbl_, LV_SYMBOL_PLAY "  EduBoard");
     lv_obj_align(h_title_lbl_, LV_ALIGN_TOP_LEFT, 10, 8);
-    lv_obj_set_style_text_color(h_title_lbl_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_color(h_title_lbl_, lv_color_hex(kText), 0);
 
     h_sub_lbl_ = lv_label_create(hdr);
     lv_label_set_text(h_sub_lbl_, "Smart Learning Assistant");
     lv_obj_align(h_sub_lbl_, LV_ALIGN_TOP_LEFT, 10, 28);
-    lv_obj_set_style_text_color(h_sub_lbl_, lv_color_hex(0xBBDEFB), 0);
+    lv_obj_set_style_text_color(h_sub_lbl_, lv_color_hex(kSubtext), 0);
 
-    // Score arc (top-right of header)
     h_arc_ = lv_arc_create(hdr);
     if (h_arc_) {
         lv_obj_set_size(h_arc_, 48, 48);
@@ -177,8 +176,8 @@ void QuizUI::BuildHomePanel() {
         lv_arc_set_range(h_arc_, 0, 100);
         lv_arc_set_value(h_arc_, 0);
         lv_arc_set_bg_angles(h_arc_, 135, 45);
-        lv_obj_set_style_arc_color(h_arc_, lv_color_hex(0x1E5799), LV_PART_MAIN);
-        lv_obj_set_style_arc_color(h_arc_, lv_color_hex(0x69F0AE), LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(h_arc_, lv_color_hex(0xE5E5EA), LV_PART_MAIN);
+        lv_obj_set_style_arc_color(h_arc_, lv_color_hex(kPrimary), LV_PART_INDICATOR);
         lv_obj_set_style_arc_width(h_arc_, 5, LV_PART_MAIN);
         lv_obj_set_style_arc_width(h_arc_, 5, LV_PART_INDICATOR);
         lv_obj_set_style_bg_opa(h_arc_, LV_OPA_TRANSP, 0);
@@ -188,9 +187,8 @@ void QuizUI::BuildHomePanel() {
     h_arc_lbl_ = lv_label_create(hdr);
     lv_label_set_text(h_arc_lbl_, "0%");
     lv_obj_align(h_arc_lbl_, LV_ALIGN_TOP_RIGHT, -18, 25);
-    lv_obj_set_style_text_color(h_arc_lbl_, lv_color_hex(0x69F0AE), 0);
+    lv_obj_set_style_text_color(h_arc_lbl_, lv_color_hex(kPrimary), 0);
 
-    // Stats row
     lv_obj_t* stats_row = lv_obj_create(home_panel_);
     if (stats_row) {
         lv_obj_set_size(stats_row, 320, 24);
@@ -204,13 +202,11 @@ void QuizUI::BuildHomePanel() {
         h_stats_lbl_ = lv_label_create(stats_row);
         lv_label_set_text(h_stats_lbl_, "Answered: 0/0   Accuracy: 0%");
         lv_obj_align(h_stats_lbl_, LV_ALIGN_LEFT_MID, 8, 0);
-        lv_obj_set_style_text_color(h_stats_lbl_, lv_color_hex(kPrimary), 0);
+        lv_obj_set_style_text_color(h_stats_lbl_, lv_color_hex(kSubtext), 0);
     }
 
-    // Thin progress bar
-    h_stat_bar_ = make_bar(home_panel_, 0, 94, 320, 4, 0x1A237E, kAccent);
+    h_stat_bar_ = make_bar(home_panel_, 0, 94, 320, 4, 0xE5E5EA, kAccent);
 
-    // Menu items (4x, 2 columns)
     const char* menu_labels[] = {
         LV_SYMBOL_PLAY "  Start Quiz",
         LV_SYMBOL_LIST "  Progress",
@@ -225,16 +221,7 @@ void QuizUI::BuildHomePanel() {
         h_menu_[i] = item;
         lv_obj_set_size(item, 145, 34);
         lv_obj_set_pos(item, xs[i], ys[i]);
-        lv_obj_set_style_bg_color(item, lv_color_hex(kCard), 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_10, 0); // Deep glass
-        lv_obj_set_style_shadow_width(item, 15, 0);
-        lv_obj_set_style_shadow_color(item, lv_color_hex(kPrimary), 0); // Neon glow
-        lv_obj_set_style_shadow_opa(item, LV_OPA_30, 0);
-        lv_obj_set_style_border_color(item, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_border_opa(item, LV_OPA_30, 0);
-        lv_obj_set_style_border_width(item, 1, 0);
-        lv_obj_set_style_radius(item, 8, 0);
-        lv_obj_set_style_pad_all(item, 0, 0);
+        apply_glass_card(item);
         lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE);
 
         h_menu_lbl_[i] = lv_label_create(item);
@@ -245,44 +232,40 @@ void QuizUI::BuildHomePanel() {
         lv_obj_t* arrow = lv_label_create(item);
         lv_label_set_text(arrow, LV_SYMBOL_RIGHT);
         lv_obj_align(arrow, LV_ALIGN_RIGHT_MID, -4, 0);
-        lv_obj_set_style_text_color(arrow, lv_color_hex(kAccent), 0);
+        lv_obj_set_style_text_color(arrow, lv_color_hex(kSubtext), 0);
     }
 
-    // Footer
-    lv_obj_t* footer = make_hdr(home_panel_, kPrimary, 20);
+    lv_obj_t* footer = make_hdr(home_panel_, 20, false);
     if (footer) {
         lv_obj_set_pos(footer, 0, 220);
         h_footer_lbl_ = lv_label_create(footer);
         lv_label_set_text(h_footer_lbl_, LV_SYMBOL_UP "/" LV_SYMBOL_DOWN " nav  " LV_SYMBOL_RIGHT " open  Hold Agent=Home");
         lv_obj_align(h_footer_lbl_, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_set_style_text_color(h_footer_lbl_, lv_color_hex(0xBBDEFB), 0);
+        lv_obj_set_style_text_color(h_footer_lbl_, lv_color_hex(kSubtext), 0);
     }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Build: Quiz panel (Landscape: 320x240)
+// Build: Quiz panel
 // ──────────────────────────────────────────────────────────────────────────────
 
 void QuizUI::BuildQuizPanel() {
     quiz_panel_ = make_panel(screen_, kBg);
-    if (!quiz_panel_) { ESP_LOGE(TAG, "OOM: quiz_panel_"); return; }
+    if (!quiz_panel_) return;
     quiz_built_ = true;
 
-    // Top bar
-    lv_obj_t* topbar = make_hdr(quiz_panel_, kPrimary, 30);
+    lv_obj_t* topbar = make_hdr(quiz_panel_, 30, true);
     q_title_lbl_    = lv_label_create(topbar);
     lv_label_set_text(q_title_lbl_, "GMAT Quiz");
     lv_obj_align(q_title_lbl_, LV_ALIGN_LEFT_MID, 8, 0);
-    lv_obj_set_style_text_color(q_title_lbl_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_color(q_title_lbl_, lv_color_hex(kText), 0);
     q_progress_lbl_ = lv_label_create(topbar);
     lv_label_set_text(q_progress_lbl_, "0/0");
     lv_obj_align(q_progress_lbl_, LV_ALIGN_RIGHT_MID, -8, 0);
-    lv_obj_set_style_text_color(q_progress_lbl_, lv_color_hex(0xBBDEFB), 0);
+    lv_obj_set_style_text_color(q_progress_lbl_, lv_color_hex(kSubtext), 0);
 
-    // Progress bar
-    q_prog_bar_ = make_bar(quiz_panel_, 0, 30, 320, 4, 0x1A237E, kPrimary);
+    q_prog_bar_ = make_bar(quiz_panel_, 0, 30, 320, 4, 0xE5E5EA, kPrimary);
 
-    // Score label
     q_score_lbl_ = lv_label_create(quiz_panel_);
     lv_label_set_text(q_score_lbl_, "Score: 0");
     lv_obj_set_pos(q_score_lbl_, 0, 36);
@@ -290,20 +273,11 @@ void QuizUI::BuildQuizPanel() {
     lv_obj_set_style_text_color(q_score_lbl_, lv_color_hex(kSubtext), 0);
     lv_obj_set_style_text_align(q_score_lbl_, LV_TEXT_ALIGN_RIGHT, 0);
 
-    // Question card
     q_card_ = lv_obj_create(quiz_panel_);
     if (q_card_) {
         lv_obj_set_size(q_card_, 308, 54);
         lv_obj_set_pos(q_card_, 6, 46);
-        lv_obj_set_style_bg_color(q_card_, lv_color_hex(kCard), 0);
-        lv_obj_set_style_bg_opa(q_card_, LV_OPA_10, 0); // Glass effect
-        lv_obj_set_style_shadow_width(q_card_, 20, 0);
-        lv_obj_set_style_shadow_color(q_card_, lv_color_hex(kPrimary), 0);
-        lv_obj_set_style_shadow_opa(q_card_, LV_OPA_30, 0);
-        lv_obj_set_style_border_color(q_card_, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_border_opa(q_card_, LV_OPA_40, 0);
-        lv_obj_set_style_border_width(q_card_, 2, 0);
-        lv_obj_set_style_radius(q_card_, 8, 0);
+        apply_glass_card(q_card_);
         lv_obj_set_style_pad_all(q_card_, 6, 0);
         lv_obj_clear_flag(q_card_, LV_OBJ_FLAG_SCROLLABLE);
         question_lbl_ = lv_label_create(q_card_);
@@ -314,8 +288,7 @@ void QuizUI::BuildQuizPanel() {
         lv_label_set_text(question_lbl_, questions_.empty() ? "No questions." : "...");
     }
 
-    // Timer bar (hidden by default)
-    q_timer_bar_ = make_bar(quiz_panel_, 6, 101, 308, 5, 0x1A237E, kAccent);
+    q_timer_bar_ = make_bar(quiz_panel_, 6, 101, 308, 5, 0xE5E5EA, kAccent);
     if (q_timer_bar_) lv_obj_add_flag(q_timer_bar_, LV_OBJ_FLAG_HIDDEN);
     q_timer_lbl_ = lv_label_create(quiz_panel_);
     if (q_timer_lbl_) {
@@ -327,7 +300,6 @@ void QuizUI::BuildQuizPanel() {
         lv_obj_add_flag(q_timer_lbl_, LV_OBJ_FLAG_HIDDEN);
     }
 
-    // Options A/B/C/D (2 columns)
     const char* letters[] = {"A", "B", "C", "D"};
     int opt_xs[] = {6, 164, 6, 164};
     int opt_ys[] = {112, 112, 164, 164};
@@ -337,19 +309,10 @@ void QuizUI::BuildQuizPanel() {
         opt_cards_[i] = card;
         lv_obj_set_size(card, 150, 46);
         lv_obj_set_pos(card, opt_xs[i], opt_ys[i]);
-        lv_obj_set_style_bg_color(card, lv_color_hex(kOptDef), 0);
-        lv_obj_set_style_bg_opa(card, LV_OPA_10, 0); // Glass effect
-        lv_obj_set_style_shadow_width(card, 10, 0);
-        lv_obj_set_style_shadow_color(card, lv_color_hex(kPrimary), 0);
-        lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
-        lv_obj_set_style_border_color(card, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_border_opa(card, LV_OPA_30, 0);
-        lv_obj_set_style_border_width(card, 1, 0);
-        lv_obj_set_style_radius(card, 6, 0);
+        apply_glass_card(card);
         lv_obj_set_style_pad_all(card, 0, 0);
         lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-        // Badge circle
         lv_obj_t* badge = lv_obj_create(card);
         if (badge) {
             opt_badge_[i] = badge;
@@ -374,36 +337,35 @@ void QuizUI::BuildQuizPanel() {
         lv_label_set_text(opt_lbls_[i], "");
     }
 
-    // Feedback bar
-    lv_obj_t* fb = make_hdr(quiz_panel_, kPrimary, 20);
+    lv_obj_t* fb = make_hdr(quiz_panel_, 20, false);
     if (fb) {
         lv_obj_set_pos(fb, 0, 220);
         q_feedback_lbl_ = lv_label_create(fb);
         lv_label_set_text(q_feedback_lbl_, "A-D answer  " LV_SYMBOL_UP "/" LV_SYMBOL_DOWN " cursor");
         lv_obj_align(q_feedback_lbl_, LV_ALIGN_LEFT_MID, 6, 0);
-        lv_obj_set_style_text_color(q_feedback_lbl_, lv_color_hex(0xBBDEFB), 0);
+        lv_obj_set_style_text_color(q_feedback_lbl_, lv_color_hex(kSubtext), 0);
         q_feedback_bar_ = fb;
         q_nav_lbl_ = lv_label_create(fb);
         lv_label_set_text(q_nav_lbl_, LV_SYMBOL_RIGHT);
         lv_obj_align(q_nav_lbl_, LV_ALIGN_RIGHT_MID, -6, 0);
-        lv_obj_set_style_text_color(q_nav_lbl_, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_color(q_nav_lbl_, lv_color_hex(kSubtext), 0);
     }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Build: Settings panel (Landscape: 320x240)
+// Build: Settings panel
 // ──────────────────────────────────────────────────────────────────────────────
 
 void QuizUI::BuildSettingsPanel() {
     settings_panel_ = make_panel(screen_, kBg);
-    if (!settings_panel_) { ESP_LOGE(TAG, "OOM: settings_panel_"); return; }
+    if (!settings_panel_) return;
     settings_built_ = true;
 
-    lv_obj_t* hdr = make_hdr(settings_panel_, kPrimary, 36);
+    lv_obj_t* hdr = make_hdr(settings_panel_, 36, true);
     lv_obj_t* hl  = lv_label_create(hdr);
     lv_label_set_text(hl, LV_SYMBOL_SETTINGS "  Settings");
     lv_obj_align(hl, LV_ALIGN_LEFT_MID, 8, 0);
-    lv_obj_set_style_text_color(hl, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_color(hl, lv_color_hex(kText), 0);
 
     const char* s_names[] = {"Quiz Timer", "Sound FX", "Show Correct",
                               "Brightness", "Volume",   LV_SYMBOL_LEFT "  Back"};
@@ -415,15 +377,7 @@ void QuizUI::BuildSettingsPanel() {
         s_items_[i] = item;
         lv_obj_set_size(item, 148, 40);
         lv_obj_set_pos(item, s_xs[i], s_ys[i]);
-        lv_obj_set_style_bg_color(item, lv_color_hex(kCard), 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_10, 0); // Deep glass
-        lv_obj_set_style_shadow_width(item, 15, 0);
-        lv_obj_set_style_shadow_color(item, lv_color_hex(kPrimary), 0);
-        lv_obj_set_style_shadow_opa(item, LV_OPA_30, 0);
-        lv_obj_set_style_border_color(item, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_border_opa(item, LV_OPA_30, 0);
-        lv_obj_set_style_border_width(item, 1, 0);
-        lv_obj_set_style_radius(item, 8, 0);
+        apply_glass_card(item);
         lv_obj_set_style_pad_all(item, 4, 0);
         lv_obj_clear_flag(item, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -442,37 +396,28 @@ void QuizUI::BuildSettingsPanel() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Build: Progress panel (Landscape: 320x240)
+// Build: Progress panel
 // ──────────────────────────────────────────────────────────────────────────────
 
 void QuizUI::BuildProgressPanel() {
     progress_panel_ = make_panel(screen_, kBg);
-    if (!progress_panel_) { ESP_LOGE(TAG, "OOM: progress_panel_"); return; }
+    if (!progress_panel_) return;
     progress_built_ = true;
 
-    lv_obj_t* hdr = make_hdr(progress_panel_, kPrimary, 36);
+    lv_obj_t* hdr = make_hdr(progress_panel_, 36, true);
     lv_obj_t* hl  = lv_label_create(hdr);
     lv_label_set_text(hl, LV_SYMBOL_LIST "  Progress Report");
     lv_obj_align(hl, LV_ALIGN_LEFT_MID, 8, 0);
-    lv_obj_set_style_text_color(hl, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_color(hl, lv_color_hex(kText), 0);
 
     lv_obj_t* card = lv_obj_create(progress_panel_);
     if (card) {
         lv_obj_set_size(card, 304, 174);
         lv_obj_set_pos(card, 8, 40);
-        lv_obj_set_style_bg_color(card, lv_color_hex(kCard), 0);
-        lv_obj_set_style_bg_opa(card, LV_OPA_10, 0); // Deep glass
-        lv_obj_set_style_shadow_width(card, 25, 0);
-        lv_obj_set_style_shadow_color(card, lv_color_hex(kPrimary), 0);
-        lv_obj_set_style_shadow_opa(card, LV_OPA_30, 0);
-        lv_obj_set_style_border_color(card, lv_color_hex(0xFFFFFF), 0);
-        lv_obj_set_style_border_opa(card, LV_OPA_30, 0);
-        lv_obj_set_style_border_width(card, 2, 0);
-        lv_obj_set_style_radius(card, 10, 0);
+        apply_glass_card(card);
         lv_obj_set_style_pad_all(card, 8, 0);
         lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-        // 2 columns of stats
         p_answered_lbl_ = lv_label_create(card);
         lv_label_set_text(p_answered_lbl_, "Total Answered: 0 / 0");
         lv_obj_set_pos(p_answered_lbl_, 0, 4);
@@ -493,16 +438,16 @@ void QuizUI::BuildProgressPanel() {
         lv_obj_set_pos(p_streak_lbl_, 0, 64);
         lv_obj_set_style_text_color(p_streak_lbl_, lv_color_hex(kSubtext), 0);
 
-        // Dynamic Chart (Demo data)
         lv_obj_t* chart = lv_chart_create(card);
         lv_obj_set_size(chart, 280, 70);
         lv_obj_set_pos(chart, 0, 85);
         lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
         lv_chart_set_point_count(chart, 7);
         lv_chart_set_div_line_count(chart, 3, 0);
-        lv_obj_set_style_bg_color(chart, lv_color_hex(kBg), 0);
+        lv_obj_set_style_bg_color(chart, lv_color_hex(kCard), 0);
+        lv_obj_set_style_bg_opa(chart, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(chart, 0, 0);
-        lv_chart_series_t* ser = lv_chart_add_series(chart, lv_color_hex(kAccent), LV_CHART_AXIS_PRIMARY_Y);
+        lv_chart_series_t* ser = lv_chart_add_series(chart, lv_color_hex(kPrimary), LV_CHART_AXIS_PRIMARY_Y);
         lv_chart_set_next_value(chart, ser, 20);
         lv_chart_set_next_value(chart, ser, 45);
         lv_chart_set_next_value(chart, ser, 30);
@@ -519,7 +464,7 @@ void QuizUI::BuildProgressPanel() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Panel switching with fade animation
+// Panel switching
 // ──────────────────────────────────────────────────────────────────────────────
 
 void QuizUI::SwitchToPanel(lv_obj_t* panel) {
@@ -535,10 +480,6 @@ void QuizUI::SwitchToPanel(lv_obj_t* panel) {
     lv_anim_set_time(&a, 200);
     lv_anim_start(&a);
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Show / Hide
-// ──────────────────────────────────────────────────────────────────────────────
 
 void QuizUI::Show(lv_obj_t* default_screen) {
     if (!screen_) return;
@@ -571,7 +512,6 @@ void QuizUI::ShowHome() {
     mode_ = QuizMode::kHome; home_sel_ = 0;
     SwitchToPanel(home_panel_);
     UpdateHomeStats();
-    // Animate arc
     if (h_arc_) {
         int acc = stats_.total_answered > 0 ? (stats_.total_correct * 100 / stats_.total_answered) : 0;
         lv_anim_t a; lv_anim_init(&a);
@@ -579,7 +519,6 @@ void QuizUI::ShowHome() {
         lv_anim_set_values(&a, 0, acc); lv_anim_set_time(&a, 900);
         lv_anim_set_path_cb(&a, lv_anim_path_ease_out); lv_anim_start(&a);
     }
-    // Slide-in menu items (Landscape, start from 320 instead of 240)
     int xs[] = {10, 165, 10, 165};
     for (int i = 0; i < kMenuCount; i++) {
         if (!h_menu_[i]) continue;
@@ -613,11 +552,11 @@ void QuizUI::HomeNavigate(int delta) {
         if (!h_menu_[i] || !h_menu_lbl_[i]) continue;
         if (i == home_sel_) {
             lv_obj_set_style_bg_color(h_menu_[i], lv_color_hex(kPrimary), 0);
-            lv_obj_set_style_border_width(h_menu_[i], 2, 0);
+            lv_obj_set_style_bg_opa(h_menu_[i], LV_OPA_COVER, 0); // Solid blue when selected
             lv_obj_set_style_text_color(h_menu_lbl_[i], lv_color_hex(0xFFFFFF), 0);
         } else {
             lv_obj_set_style_bg_color(h_menu_[i], lv_color_hex(kCard), 0);
-            lv_obj_set_style_border_width(h_menu_[i], 1, 0);
+            lv_obj_set_style_bg_opa(h_menu_[i], LV_OPA_80, 0);
             lv_obj_set_style_text_color(h_menu_lbl_[i], lv_color_hex(kText), 0);
         }
     }
@@ -658,7 +597,7 @@ void QuizUI::DisplayCurrentQuestion() {
         lv_label_set_text(opt_lbls_[i], i < (int)q.opts.size() ? q.opts[i].c_str() : "-");
     }
     ResetAllOpts();
-    SetFeedback("A-D answer   " LV_SYMBOL_UP "/" LV_SYMBOL_DOWN " cursor", kPrimary);
+    SetFeedback("A-D answer   " LV_SYMBOL_UP "/" LV_SYMBOL_DOWN " cursor", 0xFFFFFF);
     ans_revealed_ = false; selected_ans_ = -1; joy_cursor_ = -1;
     UpdateQuizProgress();
     if (settings_.timer_seconds > 0) {
@@ -685,13 +624,14 @@ void QuizUI::UpdateQuizProgress() {
 
 void QuizUI::ResetAllOpts() {
     for (int i = 0; i < 4; i++)
-        HighlightOpt(i, kOptDef, 0x90CAF9, kAccent, kText);
+        HighlightOpt(i, kOptDef, 0xE5E5EA, kAccent, kText, LV_OPA_80);
 }
 
-void QuizUI::HighlightOpt(int i, uint32_t card_bg, uint32_t border, uint32_t badge, uint32_t tcol) {
+void QuizUI::HighlightOpt(int i, uint32_t card_bg, uint32_t border, uint32_t badge, uint32_t tcol, lv_opa_t opa) {
     if (i < 0 || i >= 4) return;
     if (opt_cards_[i]) {
         lv_obj_set_style_bg_color(opt_cards_[i], lv_color_hex(card_bg), 0);
+        lv_obj_set_style_bg_opa(opt_cards_[i], opa, 0);
         lv_obj_set_style_border_color(opt_cards_[i], lv_color_hex(border), 0);
     }
     if (opt_badge_[i]) lv_obj_set_style_bg_color(opt_badge_[i], lv_color_hex(badge), 0);
@@ -710,7 +650,7 @@ void QuizUI::FlashOpt(int i) {
 void QuizUI::MoveCursor(int delta) {
     if (!ans_revealed_) ResetAllOpts();
     joy_cursor_ = (joy_cursor_ + delta + 4) % 4;
-    if (!ans_revealed_) HighlightOpt(joy_cursor_, kOptCur, kAccent, kPrimary, kPrimary);
+    if (!ans_revealed_) HighlightOpt(joy_cursor_, kPrimary, kPrimary, 0xFFFFFF, 0xFFFFFF, LV_OPA_COVER);
 }
 
 void QuizUI::ConfirmCursorSelection() {
@@ -729,15 +669,15 @@ void QuizUI::SelectAnswer(int idx) {
         stats_.session_score++; stats_.total_correct++;
         stats_.current_streak++;
         stats_.best_streak = std::max(stats_.best_streak, stats_.current_streak);
-        HighlightOpt(idx, kCorrectBg, kCorrect, kCorrect, kCorrect);
+        HighlightOpt(idx, kCorrectBg, kCorrect, kCorrect, kCorrect, LV_OPA_COVER);
         char fb[40]; snprintf(fb, sizeof(fb), LV_SYMBOL_OK "  Correct!  Streak: %d", stats_.current_streak);
-        SetFeedback(fb, kCorrect);
+        SetFeedback(fb, kCorrectBg);
     } else {
         stats_.current_streak = 0;
-        HighlightOpt(idx, kWrongBg, kWrong, kWrong, kWrong);
-        if (settings_.show_correct) HighlightOpt(q.ans, kCorrectBg, kCorrect, kCorrect, kCorrect);
+        HighlightOpt(idx, kWrongBg, kWrong, kWrong, kWrong, LV_OPA_COVER);
+        if (settings_.show_correct) HighlightOpt(q.ans, kCorrectBg, kCorrect, kCorrect, kCorrect, LV_OPA_COVER);
         char fb[40]; snprintf(fb, sizeof(fb), LV_SYMBOL_CLOSE "  Wrong!  Correct: %c", 'A' + q.ans);
-        SetFeedback(fb, kWrong);
+        SetFeedback(fb, kWrongBg);
     }
     stats_.total_answered++; stats_.session_total++;
     UpdateQuizProgress();
@@ -747,6 +687,7 @@ void QuizUI::SetFeedback(const char* msg, uint32_t bg) {
     if (!q_feedback_lbl_ || !q_feedback_bar_) return;
     lv_label_set_text(q_feedback_lbl_, msg);
     lv_obj_set_style_bg_color(q_feedback_bar_, lv_color_hex(bg), 0);
+    lv_obj_set_style_text_color(q_feedback_lbl_, lv_color_hex(kText), 0);
 }
 
 void QuizUI::SetFeedback(const std::string& msg, uint32_t bg) { SetFeedback(msg.c_str(), bg); }
@@ -760,10 +701,6 @@ void QuizUI::PrevQuestion() {
     if (q_idx_ > 0) { q_idx_--; DisplayCurrentQuestion(); }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Timer
-// ──────────────────────────────────────────────────────────────────────────────
-
 void QuizUI::StartTimer() {
     if (!q_timer_ || settings_.timer_seconds <= 0) return;
     StopTimer(); timer_rem_ = settings_.timer_seconds;
@@ -776,7 +713,7 @@ void QuizUI::UpdateTimerUI() {
     if (!q_timer_bar_ || !q_timer_lbl_) return;
     int pct = (timer_rem_ * 100) / std::max(1, settings_.timer_seconds);
     lv_bar_set_value(q_timer_bar_, pct, LV_ANIM_ON);
-    uint32_t color = timer_rem_ > settings_.timer_seconds / 2 ? kAccent :
+    uint32_t color = timer_rem_ > settings_.timer_seconds / 2 ? kPrimary :
                      timer_rem_ > 5 ? kWarn : kWrong;
     lv_obj_set_style_bg_color(q_timer_bar_, lv_color_hex(color), LV_PART_INDICATOR);
     char tbuf[8]; snprintf(tbuf, sizeof(tbuf), "%ds", timer_rem_);
@@ -793,8 +730,8 @@ void QuizUI::OnTimerTick() {
             if (!ans_revealed_) {
                 ans_revealed_ = true;
                 if (settings_.show_correct && q_idx_ < questions_.size())
-                    HighlightOpt(questions_[q_idx_].ans, kCorrectBg, kCorrect, kCorrect, kCorrect);
-                SetFeedback(LV_SYMBOL_CLOSE "  Time's Up!", kWrong);
+                    HighlightOpt(questions_[q_idx_].ans, kCorrectBg, kCorrect, kCorrect, kCorrect, LV_OPA_COVER);
+                SetFeedback(LV_SYMBOL_CLOSE "  Time's Up!", kWrongBg);
                 stats_.total_answered++; stats_.session_total++;
                 stats_.current_streak = 0; UpdateQuizProgress();
             }
@@ -843,10 +780,12 @@ void QuizUI::RenderSettings() {
         if (!s_items_[i]) continue;
         if (i == s_sel_) {
             lv_obj_set_style_bg_color(s_items_[i], lv_color_hex(kPrimary), 0);
-            lv_obj_set_style_border_width(s_items_[i], 2, 0);
+            lv_obj_set_style_bg_opa(s_items_[i], LV_OPA_COVER, 0);
+            lv_obj_set_style_text_color(lv_obj_get_child(s_items_[i], 0), lv_color_hex(0xFFFFFF), 0); // Text
         } else {
             lv_obj_set_style_bg_color(s_items_[i], lv_color_hex(kCard), 0);
-            lv_obj_set_style_border_width(s_items_[i], 1, 0);
+            lv_obj_set_style_bg_opa(s_items_[i], LV_OPA_80, 0);
+            lv_obj_set_style_text_color(lv_obj_get_child(s_items_[i], 0), lv_color_hex(kText), 0); // Text
         }
     }
 }
@@ -882,12 +821,6 @@ void QuizUI::UpdateProgressUI() {
     if (p_correct_lbl_) { snprintf(buf, sizeof(buf), "Correct: %d", stats_.total_correct); lv_label_set_text(p_correct_lbl_, buf); }
     if (p_accuracy_lbl_) { snprintf(buf, sizeof(buf), "Accuracy: %d%%", acc); lv_label_set_text(p_accuracy_lbl_, buf); }
     if (p_streak_lbl_) { snprintf(buf, sizeof(buf), "Best: %d  |  Current: %d", stats_.best_streak, stats_.current_streak); lv_label_set_text(p_streak_lbl_, buf); }
-    if (p_bar_) {
-        lv_anim_t a; lv_anim_init(&a);
-        lv_anim_set_var(&a, p_bar_); lv_anim_set_exec_cb(&a, anim_bar_cb);
-        lv_anim_set_values(&a, 0, acc); lv_anim_set_time(&a, 800);
-        lv_anim_set_path_cb(&a, lv_anim_path_ease_out); lv_anim_start(&a);
-    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -896,7 +829,6 @@ void QuizUI::UpdateProgressUI() {
 
 void QuizUI::ShowResult() {
     StopTimer(); mode_ = QuizMode::kResult; mid_quiz_ = false;
-    // Overlay on top of quiz_panel_
     lv_obj_t* all[] = {home_panel_, settings_panel_, progress_panel_};
     for (auto p : all) if (p) lv_obj_add_flag(p, LV_OBJ_FLAG_HIDDEN);
     if (quiz_panel_) lv_obj_clear_flag(quiz_panel_, LV_OBJ_FLAG_HIDDEN);
@@ -930,7 +862,7 @@ void QuizUI::ShowResult() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// TTP Button handlers
+// Buttons
 // ──────────────────────────────────────────────────────────────────────────────
 
 void QuizUI::HandleButtonA() { if (is_visible_ && mode_ == QuizMode::kQuiz) SelectAnswer(0); }
@@ -938,15 +870,11 @@ void QuizUI::HandleButtonB() { if (is_visible_ && mode_ == QuizMode::kQuiz) Sele
 void QuizUI::HandleButtonC() { if (is_visible_ && mode_ == QuizMode::kQuiz) SelectAnswer(2); }
 void QuizUI::HandleButtonD() { if (is_visible_ && mode_ == QuizMode::kQuiz) SelectAnswer(3); }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Joystick handlers
-// ──────────────────────────────────────────────────────────────────────────────
-
 void QuizUI::HandleJoyUp() {
     if (!is_visible_) return;
     switch (mode_) {
-        case QuizMode::kHome:     HomeNavigate(-2);  break; // Grid UP
-        case QuizMode::kQuiz:     MoveCursor(-2);    break; // Grid UP
+        case QuizMode::kHome:     HomeNavigate(-2);  break;
+        case QuizMode::kQuiz:     MoveCursor(-2);    break;
         case QuizMode::kSettings: s_sel_ = (s_sel_ + kSettingsCount - 2 + kSettingsCount) % kSettingsCount; RenderSettings(); break;
         default: break;
     }
@@ -955,8 +883,8 @@ void QuizUI::HandleJoyUp() {
 void QuizUI::HandleJoyDown() {
     if (!is_visible_) return;
     switch (mode_) {
-        case QuizMode::kHome:     HomeNavigate(2);   break; // Grid DOWN
-        case QuizMode::kQuiz:     MoveCursor(2);     break; // Grid DOWN
+        case QuizMode::kHome:     HomeNavigate(2);   break;
+        case QuizMode::kQuiz:     MoveCursor(2);     break;
         case QuizMode::kSettings: s_sel_ = (s_sel_ + 2) % kSettingsCount; RenderSettings(); break;
         default: break;
     }
@@ -965,9 +893,9 @@ void QuizUI::HandleJoyDown() {
 void QuizUI::HandleJoyLeft() {
     if (!is_visible_) return;
     switch (mode_) {
-        case QuizMode::kHome:     HomeNavigate(-1); break; // Grid LEFT
+        case QuizMode::kHome:     HomeNavigate(-1); break;
         case QuizMode::kQuiz:     
-            if (!ans_revealed_) MoveCursor(-1); // Grid LEFT
+            if (!ans_revealed_) MoveCursor(-1);
             else PrevQuestion(); 
             break;
         case QuizMode::kSettings: ApplySettingsAction(-1); break;
@@ -980,9 +908,9 @@ void QuizUI::HandleJoyLeft() {
 void QuizUI::HandleJoyRight() {
     if (!is_visible_) return;
     switch (mode_) {
-        case QuizMode::kHome:     HomeNavigate(1); break; // Grid RIGHT
+        case QuizMode::kHome:     HomeNavigate(1); break;
         case QuizMode::kQuiz:     
-            if (!ans_revealed_) MoveCursor(1); // Grid RIGHT
+            if (!ans_revealed_) MoveCursor(1);
             else NextQuestion(); 
             break;
         case QuizMode::kSettings: ApplySettingsAction(1); break;

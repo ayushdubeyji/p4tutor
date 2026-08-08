@@ -160,19 +160,19 @@ private:
     int                 timer_rem_  = 0;
 
     // ── Color palette ─────────────────────────────────────────────────────────
-    static constexpr uint32_t kBg        = 0x090E17;
-    static constexpr uint32_t kCard      = 0xFFFFFF;
-    static constexpr uint32_t kPrimary   = 0x00E5FF;
-    static constexpr uint32_t kAccent    = 0x7C4DFF;
-    static constexpr uint32_t kText      = 0xFFFFFF;
-    static constexpr uint32_t kSubtext   = 0x90A4AE;
-    static constexpr uint32_t kCorrect   = 0x00E676;
-    static constexpr uint32_t kWrong     = 0xFF1744;
-    static constexpr uint32_t kCorrectBg = 0x00E676;
-    static constexpr uint32_t kWrongBg   = 0xFF1744;
-    static constexpr uint32_t kOptDef    = 0xFFFFFF;
-    static constexpr uint32_t kOptCur    = 0x00E5FF;
-    static constexpr uint32_t kWarn      = 0xFFAB00;
+    static constexpr uint32_t kBg        = 0xF2F2F7; // iOS System Grey
+    static constexpr uint32_t kCard      = 0xFFFFFF; // Pure White
+    static constexpr uint32_t kPrimary   = 0x007AFF; // iOS Blue
+    static constexpr uint32_t kAccent    = 0x5856D6; // iOS Indigo
+    static constexpr uint32_t kText      = 0x000000; // Black Text
+    static constexpr uint32_t kSubtext   = 0x8E8E93; // iOS Grey Text
+    static constexpr uint32_t kCorrect   = 0x34C759; // iOS Green
+    static constexpr uint32_t kWrong     = 0xFF3B30; // iOS Red
+    static constexpr uint32_t kCorrectBg = 0xE5F9E7; 
+    static constexpr uint32_t kWrongBg   = 0xFFEBEA; 
+    static constexpr uint32_t kOptDef    = 0xFFFFFF; 
+    static constexpr uint32_t kOptCur    = 0x007AFF; 
+    static constexpr uint32_t kWarn      = 0xFF9500; // iOS Orange
 
     // ── Private methods ───────────────────────────────────────────────────────
 
