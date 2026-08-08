@@ -70,9 +70,11 @@ static lv_obj_t* make_hdr(lv_obj_t* parent, uint32_t bg, int h = 36) {
     if (!hdr) return nullptr;
     lv_obj_set_size(hdr, 320, h);
     lv_obj_set_pos(hdr, 0, 0);
-    lv_obj_set_style_bg_color(hdr, lv_color_hex(bg), 0);
-    lv_obj_set_style_bg_opa(hdr, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(hdr, 0, 0);
+    lv_obj_set_style_bg_color(hdr, lv_color_hex(0x090E17), 0); // Dark BG
+    lv_obj_set_style_bg_opa(hdr, LV_OPA_80, 0); // Slight translucency for glass feeling
+    lv_obj_set_style_border_color(hdr, lv_color_hex(0x00E5FF), 0); // Cyan line
+    lv_obj_set_style_border_width(hdr, 1, 0);
+    lv_obj_set_style_border_side(hdr, LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_set_style_radius(hdr, 0, 0);
     lv_obj_set_style_pad_all(hdr, 0, 0);
     lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
@@ -193,7 +195,8 @@ void QuizUI::BuildHomePanel() {
     if (stats_row) {
         lv_obj_set_size(stats_row, 320, 24);
         lv_obj_set_pos(stats_row, 0, 70);
-        lv_obj_set_style_bg_color(stats_row, lv_color_hex(0xE3F2FD), 0);
+        lv_obj_set_style_bg_color(stats_row, lv_color_hex(kBg), 0);
+        lv_obj_set_style_bg_opa(stats_row, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(stats_row, 0, 0);
         lv_obj_set_style_radius(stats_row, 0, 0);
         lv_obj_set_style_pad_all(stats_row, 0, 0);
@@ -205,7 +208,7 @@ void QuizUI::BuildHomePanel() {
     }
 
     // Thin progress bar
-    h_stat_bar_ = make_bar(home_panel_, 0, 94, 320, 4, 0xBBDEFB, kAccent);
+    h_stat_bar_ = make_bar(home_panel_, 0, 94, 320, 4, 0x1A237E, kAccent);
 
     // Menu items (4x, 2 columns)
     const char* menu_labels[] = {
@@ -223,10 +226,12 @@ void QuizUI::BuildHomePanel() {
         lv_obj_set_size(item, 145, 34);
         lv_obj_set_pos(item, xs[i], ys[i]);
         lv_obj_set_style_bg_color(item, lv_color_hex(kCard), 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_90, 0);
-        lv_obj_set_style_shadow_width(item, 8, 0);
-        lv_obj_set_style_shadow_color(item, lv_color_hex(0x90CAF9), 0);
-        lv_obj_set_style_border_color(item, lv_color_hex(0x90CAF9), 0);
+        lv_obj_set_style_bg_opa(item, LV_OPA_10, 0); // Deep glass
+        lv_obj_set_style_shadow_width(item, 15, 0);
+        lv_obj_set_style_shadow_color(item, lv_color_hex(kPrimary), 0); // Neon glow
+        lv_obj_set_style_shadow_opa(item, LV_OPA_30, 0);
+        lv_obj_set_style_border_color(item, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_border_opa(item, LV_OPA_30, 0);
         lv_obj_set_style_border_width(item, 1, 0);
         lv_obj_set_style_radius(item, 8, 0);
         lv_obj_set_style_pad_all(item, 0, 0);
@@ -275,7 +280,7 @@ void QuizUI::BuildQuizPanel() {
     lv_obj_set_style_text_color(q_progress_lbl_, lv_color_hex(0xBBDEFB), 0);
 
     // Progress bar
-    q_prog_bar_ = make_bar(quiz_panel_, 0, 30, 320, 4, 0xBBDEFB, 0x69F0AE);
+    q_prog_bar_ = make_bar(quiz_panel_, 0, 30, 320, 4, 0x1A237E, kPrimary);
 
     // Score label
     q_score_lbl_ = lv_label_create(quiz_panel_);
@@ -291,10 +296,12 @@ void QuizUI::BuildQuizPanel() {
         lv_obj_set_size(q_card_, 308, 54);
         lv_obj_set_pos(q_card_, 6, 46);
         lv_obj_set_style_bg_color(q_card_, lv_color_hex(kCard), 0);
-        lv_obj_set_style_bg_opa(q_card_, LV_OPA_80, 0); // Glass effect
-        lv_obj_set_style_shadow_width(q_card_, 10, 0);
-        lv_obj_set_style_shadow_color(q_card_, lv_color_hex(0x90CAF9), 0);
-        lv_obj_set_style_border_color(q_card_, lv_color_hex(0xBBDEFB), 0);
+        lv_obj_set_style_bg_opa(q_card_, LV_OPA_10, 0); // Glass effect
+        lv_obj_set_style_shadow_width(q_card_, 20, 0);
+        lv_obj_set_style_shadow_color(q_card_, lv_color_hex(kPrimary), 0);
+        lv_obj_set_style_shadow_opa(q_card_, LV_OPA_30, 0);
+        lv_obj_set_style_border_color(q_card_, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_border_opa(q_card_, LV_OPA_40, 0);
         lv_obj_set_style_border_width(q_card_, 2, 0);
         lv_obj_set_style_radius(q_card_, 8, 0);
         lv_obj_set_style_pad_all(q_card_, 6, 0);
@@ -308,7 +315,7 @@ void QuizUI::BuildQuizPanel() {
     }
 
     // Timer bar (hidden by default)
-    q_timer_bar_ = make_bar(quiz_panel_, 6, 101, 308, 5, 0xEEEEEE, kAccent);
+    q_timer_bar_ = make_bar(quiz_panel_, 6, 101, 308, 5, 0x1A237E, kAccent);
     if (q_timer_bar_) lv_obj_add_flag(q_timer_bar_, LV_OBJ_FLAG_HIDDEN);
     q_timer_lbl_ = lv_label_create(quiz_panel_);
     if (q_timer_lbl_) {
@@ -331,10 +338,12 @@ void QuizUI::BuildQuizPanel() {
         lv_obj_set_size(card, 150, 46);
         lv_obj_set_pos(card, opt_xs[i], opt_ys[i]);
         lv_obj_set_style_bg_color(card, lv_color_hex(kOptDef), 0);
-        lv_obj_set_style_bg_opa(card, LV_OPA_90, 0); // Glass effect
-        lv_obj_set_style_shadow_width(card, 4, 0);
-        lv_obj_set_style_shadow_color(card, lv_color_hex(0xBBDEFB), 0);
-        lv_obj_set_style_border_color(card, lv_color_hex(0x90CAF9), 0);
+        lv_obj_set_style_bg_opa(card, LV_OPA_10, 0); // Glass effect
+        lv_obj_set_style_shadow_width(card, 10, 0);
+        lv_obj_set_style_shadow_color(card, lv_color_hex(kPrimary), 0);
+        lv_obj_set_style_shadow_opa(card, LV_OPA_20, 0);
+        lv_obj_set_style_border_color(card, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_border_opa(card, LV_OPA_30, 0);
         lv_obj_set_style_border_width(card, 1, 0);
         lv_obj_set_style_radius(card, 6, 0);
         lv_obj_set_style_pad_all(card, 0, 0);
@@ -407,10 +416,12 @@ void QuizUI::BuildSettingsPanel() {
         lv_obj_set_size(item, 148, 40);
         lv_obj_set_pos(item, s_xs[i], s_ys[i]);
         lv_obj_set_style_bg_color(item, lv_color_hex(kCard), 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_90, 0);
-        lv_obj_set_style_shadow_width(item, 8, 0);
-        lv_obj_set_style_shadow_color(item, lv_color_hex(0x90CAF9), 0);
-        lv_obj_set_style_border_color(item, lv_color_hex(0x90CAF9), 0);
+        lv_obj_set_style_bg_opa(item, LV_OPA_10, 0); // Deep glass
+        lv_obj_set_style_shadow_width(item, 15, 0);
+        lv_obj_set_style_shadow_color(item, lv_color_hex(kPrimary), 0);
+        lv_obj_set_style_shadow_opa(item, LV_OPA_30, 0);
+        lv_obj_set_style_border_color(item, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_border_opa(item, LV_OPA_30, 0);
         lv_obj_set_style_border_width(item, 1, 0);
         lv_obj_set_style_radius(item, 8, 0);
         lv_obj_set_style_pad_all(item, 4, 0);
@@ -450,10 +461,12 @@ void QuizUI::BuildProgressPanel() {
         lv_obj_set_size(card, 304, 174);
         lv_obj_set_pos(card, 8, 40);
         lv_obj_set_style_bg_color(card, lv_color_hex(kCard), 0);
-        lv_obj_set_style_bg_opa(card, LV_OPA_90, 0);
-        lv_obj_set_style_shadow_width(card, 15, 0);
-        lv_obj_set_style_shadow_color(card, lv_color_hex(0xBBDEFB), 0);
-        lv_obj_set_style_border_color(card, lv_color_hex(0xBBDEFB), 0);
+        lv_obj_set_style_bg_opa(card, LV_OPA_10, 0); // Deep glass
+        lv_obj_set_style_shadow_width(card, 25, 0);
+        lv_obj_set_style_shadow_color(card, lv_color_hex(kPrimary), 0);
+        lv_obj_set_style_shadow_opa(card, LV_OPA_30, 0);
+        lv_obj_set_style_border_color(card, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_border_opa(card, LV_OPA_30, 0);
         lv_obj_set_style_border_width(card, 2, 0);
         lv_obj_set_style_radius(card, 10, 0);
         lv_obj_set_style_pad_all(card, 8, 0);

@@ -160,20 +160,19 @@ private:
     int                 timer_rem_  = 0;
 
     // ── Color palette ─────────────────────────────────────────────────────────
-    static constexpr uint32_t kPrimary   = 0x1565C0;
-    static constexpr uint32_t kAccent    = 0x1E88E5;
-    static constexpr uint32_t kLightBlue = 0x42A5F5;
-    static constexpr uint32_t kBg        = 0xF0F4FF;
+    static constexpr uint32_t kBg        = 0x090E17;
     static constexpr uint32_t kCard      = 0xFFFFFF;
-    static constexpr uint32_t kText      = 0x0D1B4B;
-    static constexpr uint32_t kSubtext   = 0x546E7A;
-    static constexpr uint32_t kCorrect   = 0x1B5E20;
-    static constexpr uint32_t kWrong     = 0xB71C1C;
-    static constexpr uint32_t kCorrectBg = 0xE8F5E9;
-    static constexpr uint32_t kWrongBg   = 0xFFEBEE;
-    static constexpr uint32_t kOptDef    = 0xE3F2FD;
-    static constexpr uint32_t kOptCur    = 0xBBDEFB;
-    static constexpr uint32_t kWarn      = 0xE65100;
+    static constexpr uint32_t kPrimary   = 0x00E5FF;
+    static constexpr uint32_t kAccent    = 0x7C4DFF;
+    static constexpr uint32_t kText      = 0xFFFFFF;
+    static constexpr uint32_t kSubtext   = 0x90A4AE;
+    static constexpr uint32_t kCorrect   = 0x00E676;
+    static constexpr uint32_t kWrong     = 0xFF1744;
+    static constexpr uint32_t kCorrectBg = 0x00E676;
+    static constexpr uint32_t kWrongBg   = 0xFF1744;
+    static constexpr uint32_t kOptDef    = 0xFFFFFF;
+    static constexpr uint32_t kOptCur    = 0x00E5FF;
+    static constexpr uint32_t kWarn      = 0xFFAB00;
 
     // ── Private methods ───────────────────────────────────────────────────────
 
