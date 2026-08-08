@@ -59,10 +59,10 @@
 #define PIN_BTN_D GPIO_NUM_4
 
 // Joystick - user-specified physical wiring
-#define PIN_JOY_UP    GPIO_NUM_47
-#define PIN_JOY_DOWN  GPIO_NUM_51
-#define PIN_JOY_LEFT  GPIO_NUM_52
-#define PIN_JOY_RIGHT GPIO_NUM_48
+#define PIN_JOY_UP    GPIO_NUM_48
+#define PIN_JOY_DOWN  GPIO_NUM_52
+#define PIN_JOY_LEFT  GPIO_NUM_47
+#define PIN_JOY_RIGHT GPIO_NUM_51
 #define PIN_JOY_PRESS GPIO_NUM_50
 #define PIN_AGENT_BTN GPIO_NUM_46
 

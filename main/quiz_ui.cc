@@ -223,7 +223,9 @@ void QuizUI::BuildHomePanel() {
         lv_obj_set_size(item, 145, 34);
         lv_obj_set_pos(item, xs[i], ys[i]);
         lv_obj_set_style_bg_color(item, lv_color_hex(kCard), 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_opa(item, LV_OPA_90, 0);
+        lv_obj_set_style_shadow_width(item, 8, 0);
+        lv_obj_set_style_shadow_color(item, lv_color_hex(0x90CAF9), 0);
         lv_obj_set_style_border_color(item, lv_color_hex(0x90CAF9), 0);
         lv_obj_set_style_border_width(item, 1, 0);
         lv_obj_set_style_radius(item, 8, 0);
@@ -289,6 +291,9 @@ void QuizUI::BuildQuizPanel() {
         lv_obj_set_size(q_card_, 308, 54);
         lv_obj_set_pos(q_card_, 6, 46);
         lv_obj_set_style_bg_color(q_card_, lv_color_hex(kCard), 0);
+        lv_obj_set_style_bg_opa(q_card_, LV_OPA_80, 0); // Glass effect
+        lv_obj_set_style_shadow_width(q_card_, 10, 0);
+        lv_obj_set_style_shadow_color(q_card_, lv_color_hex(0x90CAF9), 0);
         lv_obj_set_style_border_color(q_card_, lv_color_hex(0xBBDEFB), 0);
         lv_obj_set_style_border_width(q_card_, 2, 0);
         lv_obj_set_style_radius(q_card_, 8, 0);
@@ -326,7 +331,9 @@ void QuizUI::BuildQuizPanel() {
         lv_obj_set_size(card, 150, 46);
         lv_obj_set_pos(card, opt_xs[i], opt_ys[i]);
         lv_obj_set_style_bg_color(card, lv_color_hex(kOptDef), 0);
-        lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_opa(card, LV_OPA_90, 0); // Glass effect
+        lv_obj_set_style_shadow_width(card, 4, 0);
+        lv_obj_set_style_shadow_color(card, lv_color_hex(0xBBDEFB), 0);
         lv_obj_set_style_border_color(card, lv_color_hex(0x90CAF9), 0);
         lv_obj_set_style_border_width(card, 1, 0);
         lv_obj_set_style_radius(card, 6, 0);
@@ -400,7 +407,9 @@ void QuizUI::BuildSettingsPanel() {
         lv_obj_set_size(item, 148, 40);
         lv_obj_set_pos(item, s_xs[i], s_ys[i]);
         lv_obj_set_style_bg_color(item, lv_color_hex(kCard), 0);
-        lv_obj_set_style_bg_opa(item, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_opa(item, LV_OPA_90, 0);
+        lv_obj_set_style_shadow_width(item, 8, 0);
+        lv_obj_set_style_shadow_color(item, lv_color_hex(0x90CAF9), 0);
         lv_obj_set_style_border_color(item, lv_color_hex(0x90CAF9), 0);
         lv_obj_set_style_border_width(item, 1, 0);
         lv_obj_set_style_radius(item, 8, 0);
@@ -441,6 +450,9 @@ void QuizUI::BuildProgressPanel() {
         lv_obj_set_size(card, 304, 174);
         lv_obj_set_pos(card, 8, 40);
         lv_obj_set_style_bg_color(card, lv_color_hex(kCard), 0);
+        lv_obj_set_style_bg_opa(card, LV_OPA_90, 0);
+        lv_obj_set_style_shadow_width(card, 15, 0);
+        lv_obj_set_style_shadow_color(card, lv_color_hex(0xBBDEFB), 0);
         lv_obj_set_style_border_color(card, lv_color_hex(0xBBDEFB), 0);
         lv_obj_set_style_border_width(card, 2, 0);
         lv_obj_set_style_radius(card, 10, 0);
@@ -468,10 +480,23 @@ void QuizUI::BuildProgressPanel() {
         lv_obj_set_pos(p_streak_lbl_, 0, 64);
         lv_obj_set_style_text_color(p_streak_lbl_, lv_color_hex(kSubtext), 0);
 
-        lv_obj_t* bl = lv_label_create(card); lv_label_set_text(bl, "Accuracy");
-        lv_obj_set_pos(bl, 0, 100); lv_obj_set_style_text_color(bl, lv_color_hex(kSubtext), 0);
-
-        p_bar_ = make_bar(card, 0, 120, 280, 10, 0xE3F2FD, kAccent);
+        // Dynamic Chart (Demo data)
+        lv_obj_t* chart = lv_chart_create(card);
+        lv_obj_set_size(chart, 280, 70);
+        lv_obj_set_pos(chart, 0, 85);
+        lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
+        lv_chart_set_point_count(chart, 7);
+        lv_chart_set_div_line_count(chart, 3, 0);
+        lv_obj_set_style_bg_color(chart, lv_color_hex(kBg), 0);
+        lv_obj_set_style_border_width(chart, 0, 0);
+        lv_chart_series_t* ser = lv_chart_add_series(chart, lv_color_hex(kAccent), LV_CHART_AXIS_PRIMARY_Y);
+        lv_chart_set_next_value(chart, ser, 20);
+        lv_chart_set_next_value(chart, ser, 45);
+        lv_chart_set_next_value(chart, ser, 30);
+        lv_chart_set_next_value(chart, ser, 80);
+        lv_chart_set_next_value(chart, ser, 60);
+        lv_chart_set_next_value(chart, ser, 95);
+        lv_chart_set_next_value(chart, ser, 100);
     }
 
     lv_obj_t* back = lv_label_create(progress_panel_);
@@ -505,7 +530,7 @@ void QuizUI::SwitchToPanel(lv_obj_t* panel) {
 void QuizUI::Show(lv_obj_t* default_screen) {
     if (!screen_) return;
     if (default_screen && default_screen != screen_) default_screen_ = default_screen;
-    lv_scr_load_anim(screen_, LV_SCR_LOAD_ANIM_FADE_IN, 250, 0, false);
+    lv_scr_load_anim(screen_, LV_SCR_LOAD_ANIM_MOVE_TOP, 300, 0, false);
     is_visible_ = true;
     if (mid_quiz_ && quiz_built_) { SwitchToPanel(quiz_panel_); mode_ = QuizMode::kQuiz; }
     else ShowHome();
@@ -515,7 +540,7 @@ void QuizUI::Hide() {
     StopTimer();
     if (mode_ == QuizMode::kQuiz) mid_quiz_ = true;
     if (is_visible_ && default_screen_ && default_screen_ != screen_)
-        lv_scr_load_anim(default_screen_, LV_SCR_LOAD_ANIM_FADE_IN, 250, 0, false);
+        lv_scr_load_anim(default_screen_, LV_SCR_LOAD_ANIM_MOVE_BOTTOM, 300, 0, false);
     is_visible_ = false;
 }
 
@@ -907,9 +932,9 @@ void QuizUI::HandleButtonD() { if (is_visible_ && mode_ == QuizMode::kQuiz) Sele
 void QuizUI::HandleJoyUp() {
     if (!is_visible_) return;
     switch (mode_) {
-        case QuizMode::kHome:     HomeNavigate(-1);  break;
-        case QuizMode::kQuiz:     MoveCursor(-1);    break;
-        case QuizMode::kSettings: s_sel_ = (s_sel_ + kSettingsCount - 1) % kSettingsCount; RenderSettings(); break;
+        case QuizMode::kHome:     HomeNavigate(-2);  break; // Grid UP
+        case QuizMode::kQuiz:     MoveCursor(-2);    break; // Grid UP
+        case QuizMode::kSettings: s_sel_ = (s_sel_ + kSettingsCount - 2 + kSettingsCount) % kSettingsCount; RenderSettings(); break;
         default: break;
     }
 }
@@ -917,9 +942,9 @@ void QuizUI::HandleJoyUp() {
 void QuizUI::HandleJoyDown() {
     if (!is_visible_) return;
     switch (mode_) {
-        case QuizMode::kHome:     HomeNavigate(1);   break;
-        case QuizMode::kQuiz:     MoveCursor(1);     break;
-        case QuizMode::kSettings: s_sel_ = (s_sel_ + 1) % kSettingsCount; RenderSettings(); break;
+        case QuizMode::kHome:     HomeNavigate(2);   break; // Grid DOWN
+        case QuizMode::kQuiz:     MoveCursor(2);     break; // Grid DOWN
+        case QuizMode::kSettings: s_sel_ = (s_sel_ + 2) % kSettingsCount; RenderSettings(); break;
         default: break;
     }
 }
@@ -927,7 +952,11 @@ void QuizUI::HandleJoyDown() {
 void QuizUI::HandleJoyLeft() {
     if (!is_visible_) return;
     switch (mode_) {
-        case QuizMode::kQuiz:     if (ans_revealed_) PrevQuestion(); break;
+        case QuizMode::kHome:     HomeNavigate(-1); break; // Grid LEFT
+        case QuizMode::kQuiz:     
+            if (!ans_revealed_) MoveCursor(-1); // Grid LEFT
+            else PrevQuestion(); 
+            break;
         case QuizMode::kSettings: ApplySettingsAction(-1); break;
         case QuizMode::kProgress: ShowHome(); break;
         case QuizMode::kResult:   ShowHome(); break;
@@ -938,8 +967,11 @@ void QuizUI::HandleJoyLeft() {
 void QuizUI::HandleJoyRight() {
     if (!is_visible_) return;
     switch (mode_) {
-        case QuizMode::kHome:     HomeSelect(); break;
-        case QuizMode::kQuiz:     if (ans_revealed_) NextQuestion(); break;
+        case QuizMode::kHome:     HomeNavigate(1); break; // Grid RIGHT
+        case QuizMode::kQuiz:     
+            if (!ans_revealed_) MoveCursor(1); // Grid RIGHT
+            else NextQuestion(); 
+            break;
         case QuizMode::kSettings: ApplySettingsAction(1); break;
         case QuizMode::kProgress: EnterQuiz(); break;
         case QuizMode::kResult:

@@ -1,0 +1,33 @@
+EduBoard Smart Learning Assistant
+=================================
+
+Hardware Implementation:
+------------------------
+- Board: ESP32-P4 (Waveshare ESP32-P4-PICO-ILI9341)
+- Display: 2.8" ILI9341 SPI LCD (320x240 Landscape Mode)
+- Audio: ES8311 Codec via I2C/I2S
+- Input Devices:
+  1. TTP224 4-Channel Capacitive Touch Sensor (Active-High):
+     - TTP A: GPIO 49
+     - TTP B: GPIO 2
+     - TTP C: GPIO 5
+     - TTP D: GPIO 4
+  2. 5-Way Joystick:
+     - Joy UP: GPIO 52 (Rotated from Left)
+     - Joy DOWN: GPIO 48 (Rotated from Right)
+     - Joy LEFT: GPIO 51 (Rotated from Down)
+     - Joy RIGHT: GPIO 47 (Rotated from Up)
+     - Joy PRESS: GPIO 50
+  3. Agent Button (Xiaozhi Wake): GPIO 46
+
+Software Techniques:
+--------------------
+- UI Framework: LVGL (Light and Versatile Graphics Library) v9
+- State Machine: Event-driven architecture handling transition between Application States (Idle, Chatting, Listening) and Quiz Mode.
+- Data Storage: SPIFFS (SPI Flash File System) partition `mcq_data` used to store 25+ JSON formatted questions via cJSON library.
+- Graphics & Transitions:
+  - Solid fade animations (`LV_SCR_LOAD_ANIM_FADE_IN`) for tear-free screen swapping between Xiaozhi mode and Quiz UI.
+  - Transparent glass-like effect using LVGL opacity (`LV_OPA_80`), gradients, and shadows on cards.
+  - Hardware rotation handled at the driver level (`esp_lcd_panel_swap_xy` + mirroring).
+- Thread Safety: Strict use of `lvgl_port_lock(-1)` to handle concurrency between FreeRTOS hardware interrupts (buttons) and the LVGL render task.
+- Hardware-Aware Optimizations: Pre-allocation of UI panels (lazy loading) to prevent LVGL heap exhaustion. ESP32-P4 PSRAM utilization for WakeNet and UI frame buffers.
