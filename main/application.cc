@@ -1,6 +1,8 @@
 #include "application.h"
 #include "assets.h"
 #include "assets/lang_config.h"
+#include "quiz_ui.h"
+#include <esp_lvgl_port.h>
 #include "audio_codec.h"
 #include "board.h"
 #include "display.h"
@@ -163,6 +165,9 @@ void Application::Initialize() {
 
     // Update the status bar immediately to show the network state
     display->UpdateStatusBar(true);
+
+    // Initialize Quiz App (LVGL objects created here; Show() handled by state machine)
+    QuizUI::GetInstance().Initialize();
 }
 
 void Application::Run() {
@@ -914,6 +919,15 @@ void Application::HandleStateChangedEvent() {
     auto display = board.GetDisplay();
     auto led = board.GetLed();
     led->OnStateChanged();
+
+    if (lvgl_port_lock(-1)) {
+        if (new_state == kDeviceStateIdle) {
+            QuizUI::GetInstance().Show(lv_scr_act());
+        } else {
+            QuizUI::GetInstance().Hide();
+        }
+        lvgl_port_unlock();
+    }
 
     switch (new_state) {
         case kDeviceStateUnknown:

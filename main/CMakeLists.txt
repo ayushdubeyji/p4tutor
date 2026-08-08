@@ -39,6 +39,7 @@ set(SOURCES "audio/audio_codec.cc"
             "settings.cc"
             "device_state_machine.cc"
             "assets.cc"
+            "quiz_ui.cc"
             "main.cc"
             )
 

@@ -22,8 +22,8 @@
 
 #define BOOT_BUTTON_GPIO        GPIO_NUM_35
 
-#define DISPLAY_WIDTH  (240)
-#define DISPLAY_HEIGHT (320)
+#define DISPLAY_WIDTH  (320)
+#define DISPLAY_HEIGHT (240)
 #define PIN_NUM_LCD_RST            GPIO_NUM_33
 #define PIN_NUM_LCD_CS             GPIO_NUM_32
 #define PIN_NUM_LCD_RS             GPIO_NUM_31
@@ -46,12 +46,24 @@
 #define DELAY_TIME_MS                      (3000)
 
 
-#define DISPLAY_SWAP_XY false
+#define DISPLAY_SWAP_XY true
 #define DISPLAY_MIRROR_X true
-#define DISPLAY_MIRROR_Y false
+#define DISPLAY_MIRROR_Y true
 
 #define DISPLAY_OFFSET_X  0
 #define DISPLAY_OFFSET_Y  0
 
+#define PIN_BTN_A GPIO_NUM_49
+#define PIN_BTN_B GPIO_NUM_2
+#define PIN_BTN_C GPIO_NUM_5
+#define PIN_BTN_D GPIO_NUM_4
+
+// Joystick - user-specified physical wiring
+#define PIN_JOY_UP    GPIO_NUM_47
+#define PIN_JOY_DOWN  GPIO_NUM_51
+#define PIN_JOY_LEFT  GPIO_NUM_52
+#define PIN_JOY_RIGHT GPIO_NUM_48
+#define PIN_JOY_PRESS GPIO_NUM_50
+#define PIN_AGENT_BTN GPIO_NUM_46
 
 #endif // _BOARD_CONFIG_H_

@@ -2,6 +2,8 @@
 #include "codecs/es8311_audio_codec.h"
 #include "application.h"
 #include "display/lcd_display.h"
+#include "quiz_ui.h"
+#include <esp_lvgl_port.h>
 // #include "display/no_display.h"
 #include "button.h"
 
@@ -27,7 +29,10 @@ class WaveshareEsp32p4 : public WifiBoard {
 private:
     i2c_master_bus_handle_t i2c_bus_;
     Button boot_button_;
-    LcdDisplay *display_;
+    Button btn_a_, btn_b_, btn_c_, btn_d_;
+    Button joy_up_, joy_down_, joy_left_, joy_right_, joy_press_;
+    Button agent_btn_;
+    SpiLcdDisplay* display_ = nullptr;
     EspVideo* camera_ = nullptr;
 
 
@@ -182,18 +187,42 @@ private:
     void InitializeButtons() {
         boot_button_.OnClick([this]() {
             auto& app = Application::GetInstance();
-            // During startup (before connected), pressing BOOT button enters Wi-Fi config mode without reboot
             if (app.GetDeviceState() == kDeviceStateStarting) {
                 EnterWifiConfigMode();
                 return;
             }
             app.ToggleChatState();
         });
+        
+        agent_btn_.OnClick([this]() {
+            auto& app = Application::GetInstance();
+            app.ToggleChatState();
+        });
+
+        // FIX C3: Wrap LVGL calls with display lock — OnClick fires from timer task
+        // TTP buttons: active_high. Use blocking lock (-1) to avoid silent drop.
+        btn_a_.OnClick([]() { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleButtonA(); lvgl_port_unlock(); } });
+        btn_b_.OnClick([]() { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleButtonB(); lvgl_port_unlock(); } });
+        btn_c_.OnClick([]() { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleButtonC(); lvgl_port_unlock(); } });
+        btn_d_.OnClick([]() { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleButtonD(); lvgl_port_unlock(); } });
+
+        joy_up_.OnClick([]()    { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyUp();    lvgl_port_unlock(); } });
+        joy_down_.OnClick([]()  { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyDown();  lvgl_port_unlock(); } });
+        joy_left_.OnClick([]()  { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyLeft();  lvgl_port_unlock(); } });
+        joy_right_.OnClick([]() { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyRight(); lvgl_port_unlock(); } });
+        joy_press_.OnClick([]() { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyPress(); lvgl_port_unlock(); } });
+
+        // Long-press: joy_press opens settings from quiz; agent_btn returns home
+        joy_press_.OnLongPress([]()  { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyPressLong();  lvgl_port_unlock(); } });
+        agent_btn_.OnLongPress([]()  { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleAgentLongPress(); lvgl_port_unlock(); } });
     }
 
 public:
     WaveshareEsp32p4() :
-        boot_button_(BOOT_BUTTON_GPIO) {
+        boot_button_(BOOT_BUTTON_GPIO),
+        btn_a_(PIN_BTN_A, true), btn_b_(PIN_BTN_B, true), btn_c_(PIN_BTN_C, true), btn_d_(PIN_BTN_D, true),
+        joy_up_(PIN_JOY_UP), joy_down_(PIN_JOY_DOWN), joy_left_(PIN_JOY_LEFT), joy_right_(PIN_JOY_RIGHT), joy_press_(PIN_JOY_PRESS),
+        agent_btn_(PIN_AGENT_BTN) {
         InitializeCodecI2c();
         InitializeLCD();
         InitializeTouch();
