@@ -199,7 +199,7 @@ private:
     void MoveCursor(int delta);
     void ConfirmCursorSelection();
     void SelectAnswer(int idx);
-    void HighlightOpt(int idx, uint32_t card_bg, uint32_t border, uint32_t badge, uint32_t text_col);
+    void HighlightOpt(int idx, uint32_t card_bg, uint32_t border, uint32_t badge, uint32_t text_col, lv_opa_t opa = LV_OPA_COVER);
     void ResetAllOpts();
     void FlashOpt(int idx);
     void NextQuestion();
