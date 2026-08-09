@@ -1202,6 +1202,10 @@ void LcdDisplay::SetEmotion(const char* emotion) {
         ESP_LOGW(TAG, "SetEmotion('%s') called before SetupUI() - emotion will not be displayed!",
                  emotion);
     }
+    if (teacher_gif_size > 0) {
+        // Ignore emoji commands when high-def teacher avatar is used
+        return;
+    }
     if (emoji_image_ == nullptr) {
         if (setup_ui_called_) {
             ESP_LOGW(TAG,
