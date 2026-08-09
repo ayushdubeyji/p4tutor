@@ -501,6 +501,33 @@ void LcdDisplay::SetupUI() {
     lv_obj_set_style_text_font(emoji_label_, large_icon_font, 0);
     lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
     lv_label_set_text(emoji_label_, MATERIAL_SYMBOLS_ROBOT_2);
+
+    /* Boot Screen Overlay */
+    boot_overlay_ = lv_obj_create(screen);
+    lv_obj_set_size(boot_overlay_, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_color(boot_overlay_, lv_color_hex(0x000000), 0); // Always dark during boot
+    lv_obj_set_style_bg_opa(boot_overlay_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(boot_overlay_, 0, 0);
+    lv_obj_set_style_radius(boot_overlay_, 0, 0);
+    lv_obj_set_style_pad_all(boot_overlay_, 0, 0);
+    
+    // Add an animated spinner
+    boot_spinner_ = lv_spinner_create(boot_overlay_);
+    lv_obj_set_size(boot_spinner_, 60, 60);
+    lv_obj_align(boot_spinner_, LV_ALIGN_CENTER, 0, -20);
+    lv_obj_set_style_arc_color(boot_spinner_, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(boot_spinner_, lv_color_hex(0x0A84FF), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(boot_spinner_, 6, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(boot_spinner_, 6, LV_PART_INDICATOR);
+
+    // Boot label
+    boot_lbl_ = lv_label_create(boot_overlay_);
+    lv_obj_set_style_text_font(boot_lbl_, text_font, 0);
+    lv_obj_set_style_text_color(boot_lbl_, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(boot_lbl_, "Initializing System...");
+    lv_obj_align(boot_lbl_, LV_ALIGN_CENTER, 0, 40);
+
+    /* End Boot Screen */
 }
 #if CONFIG_IDF_TARGET_ESP32P4
 #define MAX_MESSAGES 40
@@ -1049,6 +1076,27 @@ void LcdDisplay::SetPreviewImage(std::unique_ptr<LvglImage> image) {
     lv_obj_remove_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
     esp_timer_stop(preview_timer_);
     ESP_ERROR_CHECK(esp_timer_start_once(preview_timer_, PREVIEW_IMAGE_DURATION_MS * 1000));
+}
+
+void LcdDisplay::SetStatus(const char* status) {
+    LvglDisplay::SetStatus(status);
+    DisplayLockGuard lock(this);
+    if (!boot_overlay_) return;
+    
+    if (status != nullptr && strcmp(status, "Standby") == 0) {
+        // We have successfully booted and connected. Hide the overlay!
+        if (!lv_obj_has_flag(boot_overlay_, LV_OBJ_FLAG_HIDDEN)) {
+            lv_obj_add_flag(boot_overlay_, LV_OBJ_FLAG_HIDDEN);
+        }
+    } else {
+        // Update the boot screen text with the current status (e.g. Connecting to Wi-Fi)
+        if (lv_obj_has_flag(boot_overlay_, LV_OBJ_FLAG_HIDDEN)) {
+            lv_obj_remove_flag(boot_overlay_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (boot_lbl_ && status != nullptr) {
+            lv_label_set_text(boot_lbl_, status);
+        }
+    }
 }
 
 void LcdDisplay::SetChatMessage(const char* role, const char* content) {

@@ -4,11 +4,12 @@
 #include <esp_log.h>
 #include <esp_spiffs.h>
 #include <esp_lvgl_port.h>
-#include <cJSON.h>
-#include <fstream>
+#include "assets.h"
 #include <sstream>
-#include <algorithm>
-#include <cstdio>
+#include <fstream>
+#include <math.h>
+#include "cJSON.h"
+#include "mcp_server.h"
 
 #define TAG "QuizUI"
 
@@ -17,9 +18,10 @@
 // ──────────────────────────────────────────────────────────────────────────────
 static void anim_opa_cb(void* obj, int32_t v) { lv_obj_set_style_opa((lv_obj_t*)obj, (lv_opa_t)v, 0); }
 static void anim_arc_cb(void* obj, int32_t v) { lv_arc_set_value((lv_obj_t*)obj, v); }
-static void anim_bar_cb(void* obj, int32_t v) { lv_bar_set_value((lv_obj_t*)obj, v, LV_ANIM_OFF); }
+// static void anim_bar_cb(void* obj, int32_t v) { lv_bar_set_value((lv_obj_t*)obj, v, LV_ANIM_OFF); }
 static void anim_x_cb(void* obj, int32_t v) { lv_obj_set_x((lv_obj_t*)obj, v); }
 static void anim_y_cb(void* obj, int32_t v) { lv_obj_set_y((lv_obj_t*)obj, v); }
+static void anim_zoom_cb(void* obj, int32_t v) { lv_obj_set_style_transform_zoom((lv_obj_t*)obj, v, 0); }
 static void quiz_timer_cb(void* arg) { static_cast<QuizUI*>(arg)->OnTimerTick(); }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -39,6 +41,8 @@ void QuizUI::ApplyThemeConfig() {
         t_accent_ = 0x5856D6;
         t_text_ = 0x000000;
         t_subtext_ = 0x8E8E93;
+        t_correct_ = 0x34C759;
+        t_wrong_ = 0xFF3B30;
     } else { // Dark
         t_bg_ = 0x000000;
         t_card_ = 0x1C1C1E;
@@ -46,6 +50,8 @@ void QuizUI::ApplyThemeConfig() {
         t_accent_ = 0x5E5CE6;
         t_text_ = 0xFFFFFF;
         t_subtext_ = 0x98989D;
+        t_correct_ = 0x30D158;
+        t_wrong_ = 0xFF453A;
     }
     t_glass_opa_ = settings_.glass_effect ? LV_OPA_70 : LV_OPA_COVER;
 }
@@ -63,7 +69,72 @@ void QuizUI::Initialize() {
     esp_timer_create_args_t ta = { .callback = quiz_timer_cb, .arg = this, .name = "quiz" };
     esp_timer_create(&ta, &q_timer_);
 
+    // Expose Quiz questions to the AI via MCP
+    McpServer::GetInstance().AddTool("quiz.get_questions",
+        "Retrieve the practice test questions loaded on the device. Useful for conducting an interactive test.",
+        PropertyList({
+            Property("offset", kPropertyTypeInteger, 0, 0, 1000),
+            Property("limit", kPropertyTypeInteger, 5, 1, 50)
+        }),
+        [](const PropertyList& props) -> ReturnValue {
+            return QuizUI::GetInstance().GetQuestionsJsonString(props["offset"].value<int>(), props["limit"].value<int>());
+        });
+
+    McpServer::GetInstance().AddTool("quiz.set_ui_state",
+        "Navigate the physical screen of the device to a specific question, or select an option for the user.",
+        PropertyList({
+            Property("question_index", kPropertyTypeInteger, 0, 0, 1000),
+            Property("select_option_index", kPropertyTypeInteger, -1, -1, 4)
+        }),
+        [](const PropertyList& props) -> ReturnValue {
+            QuizUI::GetInstance().NavigateToQuestion(props["question_index"].value<int>());
+            int opt = props["select_option_index"].value<int>();
+            if (opt >= 0 && opt < 4) QuizUI::GetInstance().SelectAnswer(opt);
+            return true;
+        });
+
+    McpServer::GetInstance().AddTool("quiz.exit_quiz",
+        "Exit the practice test and return the user to the home screen.",
+        PropertyList(),
+        [](const PropertyList& props) -> ReturnValue {
+            QuizUI::GetInstance().GoHome();
+            return true;
+        });
+
     RebuildUI();
+}
+
+std::string QuizUI::GetQuestionsJsonString(int offset, int limit) const {
+    cJSON* root = cJSON_CreateArray();
+    int end = std::min((int)questions_.size(), offset + limit);
+    for (int i = offset; i < end; i++) {
+        const auto& q = questions_[i];
+        cJSON* item = cJSON_CreateObject();
+        cJSON_AddNumberToObject(item, "index", i);
+        cJSON_AddStringToObject(item, "question", q.q.c_str());
+        cJSON_AddNumberToObject(item, "correct_index", q.ans);
+        cJSON* opts = cJSON_CreateArray();
+        for (const auto& opt : q.opts) {
+            cJSON_AddItemToArray(opts, cJSON_CreateString(opt.c_str()));
+        }
+        cJSON_AddItemToObject(item, "options", opts);
+        cJSON_AddItemToArray(root, item);
+    }
+    char* str = cJSON_PrintUnformatted(root);
+    std::string res(str);
+    cJSON_free(str);
+    cJSON_Delete(root);
+    return res;
+}
+
+void QuizUI::NavigateToQuestion(int index) {
+    if (index >= 0 && index < (int)questions_.size()) {
+        if (!lvgl_port_lock(-1)) return;
+        q_idx_ = index;
+        CycleBackgroundColor(q_idx_);
+        DisplayCurrentQuestion();
+        lvgl_port_unlock();
+    }
 }
 
 void QuizUI::DestroyPanels() {
@@ -124,6 +195,8 @@ void QuizUI::CreateBackgroundBlobs() {
 }
 
 void QuizUI::RebuildUI() {
+    if (!lvgl_port_lock(-1)) return;
+    
     bool was_visible = is_visible_;
     ApplyThemeConfig();
     DestroyPanels();
@@ -151,6 +224,8 @@ void QuizUI::RebuildUI() {
     } else {
         SwitchToPanel(home_panel_);
     }
+    
+    lvgl_port_unlock();
 }
 
 void QuizUI::LoadQuestions() {
@@ -206,12 +281,12 @@ static lv_obj_t* make_bar(lv_obj_t* parent, int x, int y, int w, int h, uint32_t
     return b;
 }
 
-static lv_obj_t* make_hdr(QuizUI* ui, lv_obj_t* parent, int h = 36, bool bottom_border = true) {
+static lv_obj_t* make_hdr(lv_obj_t* parent, int h, bool bottom_border, uint32_t card_bg, lv_opa_t opa, int theme_mode) {
     lv_obj_t* hdr = lv_obj_create(parent);
     lv_obj_set_size(hdr, 320, h); lv_obj_set_pos(hdr, 0, 0);
-    lv_obj_set_style_bg_color(hdr, lv_color_hex(ui->t_card_), 0);
-    lv_obj_set_style_bg_opa(hdr, ui->t_glass_opa_, 0);
-    uint32_t bcol = ui->settings_.theme_mode == 0 ? 0xE5E5EA : 0x2C2C2E;
+    lv_obj_set_style_bg_color(hdr, lv_color_hex(card_bg), 0);
+    lv_obj_set_style_bg_opa(hdr, opa, 0);
+    uint32_t bcol = theme_mode == 0 ? 0xE5E5EA : 0x2C2C2E;
     lv_obj_set_style_border_color(hdr, lv_color_hex(bcol), 0);
     lv_obj_set_style_border_width(hdr, 1, 0);
     lv_obj_set_style_border_side(hdr, bottom_border ? LV_BORDER_SIDE_BOTTOM : LV_BORDER_SIDE_TOP, 0);
@@ -221,11 +296,11 @@ static lv_obj_t* make_hdr(QuizUI* ui, lv_obj_t* parent, int h = 36, bool bottom_
     return hdr;
 }
 
-static void apply_glass_card(QuizUI* ui, lv_obj_t* card) {
-    lv_obj_set_style_bg_color(card, lv_color_hex(ui->t_card_), 0);
-    lv_obj_set_style_bg_opa(card, ui->t_glass_opa_, 0);
+static void apply_glass_card(lv_obj_t* card, uint32_t card_bg, lv_opa_t opa, int theme_mode) {
+    lv_obj_set_style_bg_color(card, lv_color_hex(card_bg), 0);
+    lv_obj_set_style_bg_opa(card, opa, 0);
     lv_obj_set_style_shadow_width(card, 0, 0); 
-    uint32_t bcol = ui->settings_.theme_mode == 0 ? 0xE5E5EA : 0x2C2C2E;
+    uint32_t bcol = theme_mode == 0 ? 0xE5E5EA : 0x2C2C2E;
     lv_obj_set_style_border_color(card, lv_color_hex(bcol), 0);
     lv_obj_set_style_border_width(card, 1, 0);
     lv_obj_set_style_radius(card, 16, 0);
@@ -237,7 +312,7 @@ static void apply_glass_card(QuizUI* ui, lv_obj_t* card) {
 
 void QuizUI::BuildHomePanel() {
     home_panel_ = make_panel(screen_);
-    lv_obj_t* hdr = make_hdr(this, home_panel_, 70, true);
+    lv_obj_t* hdr = make_hdr(home_panel_, 70, true, t_card_, t_glass_opa_, settings_.theme_mode);
     
     h_title_lbl_ = lv_label_create(hdr);
     lv_label_set_text(h_title_lbl_, LV_SYMBOL_PLAY "  EduBoard");
@@ -280,14 +355,14 @@ void QuizUI::BuildHomePanel() {
     for (int i = 0; i < kMenuCount; i++) {
         h_menu_[i] = lv_obj_create(home_panel_);
         lv_obj_set_size(h_menu_[i], 145, 40); lv_obj_set_pos(h_menu_[i], xs[i], ys[i]);
-        apply_glass_card(this, h_menu_[i]);
+        apply_glass_card(h_menu_[i], t_card_, t_glass_opa_, settings_.theme_mode);
         lv_obj_clear_flag(h_menu_[i], LV_OBJ_FLAG_SCROLLABLE);
         h_menu_lbl_[i] = lv_label_create(h_menu_[i]);
         lv_label_set_text(h_menu_lbl_[i], m_labels[i]);
         lv_obj_align(h_menu_lbl_[i], LV_ALIGN_LEFT_MID, 8, 0);
     }
 
-    lv_obj_t* footer = make_hdr(this, home_panel_, 20, false);
+    lv_obj_t* footer = make_hdr(home_panel_, 20, false, t_card_, t_glass_opa_, settings_.theme_mode);
     lv_obj_set_pos(footer, 0, 220);
     h_footer_lbl_ = lv_label_create(footer);
     lv_label_set_text(h_footer_lbl_, LV_SYMBOL_UP "/" LV_SYMBOL_DOWN " nav  " LV_SYMBOL_RIGHT " open  Hold Agent=Home");
@@ -297,7 +372,7 @@ void QuizUI::BuildHomePanel() {
 
 void QuizUI::BuildQuizPanel() {
     quiz_panel_ = make_panel(screen_);
-    lv_obj_t* topbar = make_hdr(this, quiz_panel_, 30, true);
+    lv_obj_t* topbar = make_hdr(quiz_panel_, 30, true, t_card_, t_glass_opa_, settings_.theme_mode);
     q_title_lbl_ = lv_label_create(topbar);
     lv_label_set_text(q_title_lbl_, "GMAT Quiz");
     lv_obj_align(q_title_lbl_, LV_ALIGN_LEFT_MID, 8, 0);
@@ -317,9 +392,19 @@ void QuizUI::BuildQuizPanel() {
 
     q_card_ = lv_obj_create(quiz_panel_);
     lv_obj_set_size(q_card_, 308, 54); lv_obj_set_pos(q_card_, 6, 46);
-    apply_glass_card(this, q_card_);
+    apply_glass_card(q_card_, t_card_, t_glass_opa_, settings_.theme_mode);
     lv_obj_set_style_pad_all(q_card_, 6, 0);
     lv_obj_clear_flag(q_card_, LV_OBJ_FLAG_SCROLLABLE);
+    
+    lv_obj_set_style_bg_opa(q_card_, LV_OPA_40, 0);
+    lv_obj_set_style_border_width(q_card_, 1, 0);
+    lv_obj_set_style_border_color(q_card_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_opa(q_card_, LV_OPA_30, 0);
+    lv_obj_set_style_shadow_width(q_card_, 20, 0);
+    lv_obj_set_style_shadow_color(q_card_, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_shadow_opa(q_card_, LV_OPA_10, 0);
+    lv_obj_set_style_shadow_ofs_y(q_card_, 5, 0);
+
     question_lbl_ = lv_label_create(q_card_);
     lv_label_set_long_mode(question_lbl_, LV_LABEL_LONG_WRAP);
     lv_obj_set_size(question_lbl_, 296, 44);
@@ -332,7 +417,7 @@ void QuizUI::BuildQuizPanel() {
     for (int i = 0; i < 4; i++) {
         opt_cards_[i] = lv_obj_create(quiz_panel_);
         lv_obj_set_size(opt_cards_[i], 150, 46); lv_obj_set_pos(opt_cards_[i], opt_xs[i], opt_ys[i]);
-        apply_glass_card(this, opt_cards_[i]);
+        apply_glass_card(opt_cards_[i], t_card_, t_glass_opa_, settings_.theme_mode);
         lv_obj_set_style_pad_all(opt_cards_[i], 0, 0);
         lv_obj_clear_flag(opt_cards_[i], LV_OBJ_FLAG_SCROLLABLE);
 
@@ -350,7 +435,7 @@ void QuizUI::BuildQuizPanel() {
         lv_obj_set_width(opt_lbls_[i], 114); lv_obj_align(opt_lbls_[i], LV_ALIGN_LEFT_MID, 32, 0);
     }
 
-    q_feedback_bar_ = make_hdr(this, quiz_panel_, 20, false);
+    q_feedback_bar_ = make_hdr(quiz_panel_, 20, false, t_card_, t_glass_opa_, settings_.theme_mode);
     lv_obj_set_pos(q_feedback_bar_, 0, 220);
     q_feedback_lbl_ = lv_label_create(q_feedback_bar_);
     lv_obj_align(q_feedback_lbl_, LV_ALIGN_LEFT_MID, 6, 0);
@@ -358,7 +443,7 @@ void QuizUI::BuildQuizPanel() {
 
 void QuizUI::BuildSettingsPanel() {
     settings_panel_ = make_panel(screen_);
-    lv_obj_t* hdr = make_hdr(this, settings_panel_, 32, true);
+    lv_obj_t* hdr = make_hdr(settings_panel_, 32, true, t_card_, t_glass_opa_, settings_.theme_mode);
     lv_obj_t* hl = lv_label_create(hdr);
     lv_label_set_text(hl, LV_SYMBOL_SETTINGS "  Settings");
     lv_obj_align(hl, LV_ALIGN_LEFT_MID, 8, 0);
@@ -372,7 +457,7 @@ void QuizUI::BuildSettingsPanel() {
         lv_obj_set_size(s_items_[i], 148, 38);
         if (i == 8) lv_obj_set_size(s_items_[i], 304, 26);
         lv_obj_set_pos(s_items_[i], s_xs[i], s_ys[i]);
-        apply_glass_card(this, s_items_[i]);
+        apply_glass_card(s_items_[i], t_card_, t_glass_opa_, settings_.theme_mode);
         lv_obj_set_style_pad_all(s_items_[i], 4, 0);
         lv_obj_clear_flag(s_items_[i], LV_OBJ_FLAG_SCROLLABLE);
 
@@ -389,7 +474,7 @@ void QuizUI::BuildSettingsPanel() {
 
 void QuizUI::BuildProgressPanel() {
     progress_panel_ = make_panel(screen_);
-    lv_obj_t* hdr = make_hdr(this, progress_panel_, 36, true);
+    lv_obj_t* hdr = make_hdr(progress_panel_, 36, true, t_card_, t_glass_opa_, settings_.theme_mode);
     lv_obj_t* hl = lv_label_create(hdr);
     lv_label_set_text(hl, LV_SYMBOL_LIST "  Progress Report");
     lv_obj_align(hl, LV_ALIGN_LEFT_MID, 8, 0);
@@ -397,7 +482,7 @@ void QuizUI::BuildProgressPanel() {
 
     lv_obj_t* card = lv_obj_create(progress_panel_);
     lv_obj_set_size(card, 304, 174); lv_obj_set_pos(card, 8, 40);
-    apply_glass_card(this, card);
+    apply_glass_card(card, t_card_, t_glass_opa_, settings_.theme_mode);
     lv_obj_set_style_pad_all(card, 8, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -444,22 +529,33 @@ void QuizUI::SwitchToPanel(lv_obj_t* panel) {
 
 void QuizUI::Show(lv_obj_t* default_screen) {
     if (!screen_) return;
+    if (!lvgl_port_lock(-1)) return;
+    
     if (default_screen && default_screen != screen_) default_screen_ = default_screen;
     lv_scr_load_anim(screen_, LV_SCR_LOAD_ANIM_MOVE_TOP, 300, 0, false);
     is_visible_ = true;
     if (mid_quiz_) { SwitchToPanel(quiz_panel_); mode_ = QuizMode::kQuiz; }
     else ShowHome();
+    
+    lvgl_port_unlock();
 }
 
 void QuizUI::Hide() {
     StopTimer(); if (mode_ == QuizMode::kQuiz) mid_quiz_ = true;
+    if (!lvgl_port_lock(-1)) return;
+    
     if (is_visible_ && default_screen_ && default_screen_ != screen_)
         lv_scr_load_anim(default_screen_, LV_SCR_LOAD_ANIM_MOVE_BOTTOM, 300, 0, false);
     is_visible_ = false;
+    
+    lvgl_port_unlock();
 }
 
 void QuizUI::GoHome() {
-    if (!is_visible_) return; StopTimer(); mid_quiz_ = false; ShowHome();
+    if (!is_visible_) return; 
+    StopTimer(); 
+    mid_quiz_ = false; 
+    ShowHome();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -518,7 +614,7 @@ void QuizUI::EnterQuiz() {
 
 void QuizUI::DisplayCurrentQuestion() {
     if (questions_.empty()) { lv_label_set_text(question_lbl_, "No questions loaded."); return; }
-    if (q_idx_ >= questions_.size()) q_idx_ = questions_.size() - 1;
+    if (q_idx_ >= (int)questions_.size()) q_idx_ = questions_.size() - 1;
     const QuizQuestion& q = questions_[q_idx_];
     lv_label_set_text(question_lbl_, q.q.c_str());
     for (int i = 0; i < 4; i++) lv_label_set_text(opt_lbls_[i], i < (int)q.opts.size() ? q.opts[i].c_str() : "-");
@@ -539,7 +635,13 @@ void QuizUI::UpdateQuizProgress() {
 
 void QuizUI::ResetAllOpts() {
     uint32_t b = settings_.theme_mode == 0 ? 0xE5E5EA : 0x2C2C2E;
-    for (int i = 0; i < 4; i++) HighlightOpt(i, t_card_, b, t_accent_, t_text_, t_glass_opa_);
+    for (int i = 0; i < 4; i++) {
+        HighlightOpt(i, t_card_, b, t_accent_, t_text_, t_glass_opa_);
+        // Reset scale
+        lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, opt_cards_[i]); lv_anim_set_exec_cb(&a, anim_zoom_cb);
+        lv_anim_set_values(&a, 270, 256);
+        lv_anim_set_time(&a, 150); lv_anim_start(&a);
+    }
 }
 
 void QuizUI::HighlightOpt(int i, uint32_t card_bg, uint32_t border, uint32_t badge, uint32_t tcol, lv_opa_t opa) {
@@ -562,7 +664,13 @@ void QuizUI::MoveCursor(int delta) {
     if (!ans_revealed_) ResetAllOpts();
     PlayUISound(Lang::Sounds::OGG_POPUP);
     joy_cursor_ = (joy_cursor_ + delta + 4) % 4;
-    if (!ans_revealed_) HighlightOpt(joy_cursor_, t_primary_, t_primary_, 0xFFFFFF, 0xFFFFFF, LV_OPA_COVER);
+    if (!ans_revealed_) {
+        HighlightOpt(joy_cursor_, t_primary_, t_primary_, 0xFFFFFF, 0xFFFFFF, LV_OPA_COVER);
+        // Pop out scale animation for highlighted option
+        lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, opt_cards_[joy_cursor_]); lv_anim_set_exec_cb(&a, anim_zoom_cb);
+        lv_anim_set_values(&a, 256, 270);
+        lv_anim_set_time(&a, 150); lv_anim_set_path_cb(&a, lv_anim_path_overshoot); lv_anim_start(&a);
+    }
 }
 
 void QuizUI::ConfirmCursorSelection() {
@@ -600,11 +708,64 @@ void QuizUI::SetFeedback(const char* msg, uint32_t bg) {
     lv_obj_set_style_text_color(q_feedback_lbl_, lv_color_hex(bg == t_card_ ? t_subtext_ : 0xFFFFFF), 0);
 }
 
+void QuizUI::CycleBackgroundColor(int index) {
+    // Smooth Hue shift per question. Hues from 0 to 360 mapped to HEX. 
+    // We'll keep it simple by interpolating a few base elegant colors.
+    uint32_t colors[] = { 0x0A84FF, 0x30D158, 0xFF9F0A, 0xFF375F, 0x5E5CE6, 0x32ADE6 };
+    int c_idx = index % (sizeof(colors)/sizeof(colors[0]));
+    uint32_t color = colors[c_idx];
+    
+    // Animate background color smoothly if in Solid mode. In Glass/Aurora mode, aurora does the job.
+    if (settings_.bg_anim == 0) { // Static Solid
+        lv_obj_set_style_bg_color(screen_, lv_color_hex(color), 0);
+    }
+}
+
 void QuizUI::NextQuestion() {
-    if (q_idx_ + 1 < questions_.size()) { q_idx_++; DisplayCurrentQuestion(); }
+    if (q_idx_ + 1 < questions_.size()) { 
+        // Swipe left transition
+        lv_anim_t a_out; lv_anim_init(&a_out);
+        lv_anim_set_var(&a_out, q_card_);
+        lv_anim_set_values(&a_out, lv_obj_get_x(q_card_), -LV_HOR_RES);
+        lv_anim_set_time(&a_out, 200);
+        lv_anim_set_path_cb(&a_out, lv_anim_path_ease_in);
+        lv_anim_start(&a_out);
+        
+        q_idx_++; 
+        CycleBackgroundColor(q_idx_);
+        DisplayCurrentQuestion(); 
+        
+        lv_anim_t a_in; lv_anim_init(&a_in);
+        lv_anim_set_var(&a_in, q_card_);
+        lv_anim_set_values(&a_in, LV_HOR_RES, 6); // Original pos is 6
+        lv_anim_set_time(&a_in, 300);
+        lv_anim_set_path_cb(&a_in, lv_anim_path_ease_out);
+        lv_anim_start(&a_in);
+    }
     else ShowResult();
 }
-void QuizUI::PrevQuestion() { if (q_idx_ > 0) { q_idx_--; DisplayCurrentQuestion(); } }
+void QuizUI::PrevQuestion() { 
+    if (q_idx_ > 0) { 
+        // Swipe right transition
+        lv_anim_t a_out; lv_anim_init(&a_out);
+        lv_anim_set_var(&a_out, q_card_);
+        lv_anim_set_values(&a_out, lv_obj_get_x(q_card_), LV_HOR_RES);
+        lv_anim_set_time(&a_out, 200);
+        lv_anim_set_path_cb(&a_out, lv_anim_path_ease_in);
+        lv_anim_start(&a_out);
+        
+        q_idx_--; 
+        CycleBackgroundColor(q_idx_);
+        DisplayCurrentQuestion(); 
+        
+        lv_anim_t a_in; lv_anim_init(&a_in);
+        lv_anim_set_var(&a_in, q_card_);
+        lv_anim_set_values(&a_in, -LV_HOR_RES, 6);
+        lv_anim_set_time(&a_in, 300);
+        lv_anim_set_path_cb(&a_in, lv_anim_path_ease_out);
+        lv_anim_start(&a_in);
+    } 
+}
 
 void QuizUI::StartTimer() {
     if (!q_timer_ || settings_.timer_seconds <= 0) return;

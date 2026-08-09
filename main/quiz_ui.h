@@ -40,6 +40,11 @@ enum class QuizMode {
 
 class QuizUI {
 public:
+    static QuizUI& GetInstance() {
+        static QuizUI instance;
+        return instance;
+    }
+
     QuizUI();
     ~QuizUI();
 
@@ -47,6 +52,15 @@ public:
     void Show(lv_obj_t* default_screen = nullptr);
     void Hide();
     void GoHome();
+    void EnterQuiz();
+
+    // AI MCP Integration Methods
+    std::string GetQuestionsJsonString(int offset, int limit) const;
+    void NavigateToQuestion(int index);
+    
+    // Internal quiz state getters
+    bool IsInQuiz() const { return mode_ == QuizMode::kQuiz; }
+    int GetCurrentQuestionIndex() const { return q_idx_; }
 
     // Buttons
     void HandleButtonA(); void HandleButtonB(); void HandleButtonC(); void HandleButtonD();
@@ -73,7 +87,6 @@ private:
     void HomeSelect();
 
     void BuildQuizPanel();
-    void EnterQuiz();
     void DisplayCurrentQuestion();
     void UpdateQuizProgress();
     void MoveCursor(int delta);
@@ -93,6 +106,7 @@ private:
     void ApplySettingsAction(int delta);
     void RenderSettings();
     const char* TimerLabel() const;
+    void CycleBackgroundColor(int index);
 
     void BuildProgressPanel();
     void ShowProgress();

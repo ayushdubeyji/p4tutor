@@ -33,6 +33,10 @@ protected:
     std::unique_ptr<LvglImage> preview_image_cached_ = nullptr;
     bool hide_subtitle_ = false;  // Control whether to hide chat messages/subtitles
 
+    lv_obj_t* boot_overlay_ = nullptr;
+    lv_obj_t* boot_spinner_ = nullptr;
+    lv_obj_t* boot_lbl_ = nullptr;
+
     void InitializeLcdThemes();
     virtual bool Lock(int timeout_ms = 0) override;
     virtual void Unlock() override;
@@ -54,6 +58,7 @@ public:
 
     // Set whether to hide chat messages/subtitles
     void SetHideSubtitle(bool hide);
+    virtual void SetStatus(const char* status) override;
 };
 
 // SPI LCD display
