@@ -24,6 +24,7 @@ static void anim_x_cb(void* obj, int32_t v) { lv_obj_set_x((lv_obj_t*)obj, v); }
 static void anim_y_cb(void* obj, int32_t v) { lv_obj_set_y((lv_obj_t*)obj, v); }
 static void anim_zoom_cb(void* obj, int32_t v) { lv_obj_set_style_transform_zoom((lv_obj_t*)obj, v, 0); }
 static void quiz_timer_cb(void* arg) { static_cast<QuizUI*>(arg)->OnTimerTick(); }
+static void sched_timer_cb(void* arg) { static_cast<QuizUI*>(arg)->OnSchedTick(); }
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Lifecycle & Theming
@@ -32,6 +33,7 @@ QuizUI::QuizUI() {}
 QuizUI::~QuizUI() {
     StopTimer();
     if (q_timer_) esp_timer_delete(q_timer_);
+    if (sched_timer_) { esp_timer_stop(sched_timer_); esp_timer_delete(sched_timer_); }
 }
 
 void QuizUI::ApplyThemeConfig() {
@@ -92,6 +94,10 @@ void QuizUI::Initialize() {
 
     esp_timer_create_args_t ta = { .callback = quiz_timer_cb, .arg = this, .name = "quiz" };
     esp_timer_create(&ta, &q_timer_);
+    
+    esp_timer_create_args_t sta = { .callback = sched_timer_cb, .arg = this, .name = "sched" };
+    esp_timer_create(&sta, &sched_timer_);
+    esp_timer_start_periodic(sched_timer_, 60000000); // tick every 1 minute
 
     // Expose Quiz questions to the AI via MCP
     McpServer::GetInstance().AddTool("quiz.get_questions",
@@ -157,6 +163,42 @@ void QuizUI::Initialize() {
             cJSON_AddNumberToObject(obj, "current_index", q.GetCurrentQuestionIndex());
             cJSON_AddBoolToObject(obj, "in_quiz", q.IsInQuiz());
             return obj;
+        });
+
+    McpServer::GetInstance().AddTool("quiz.get_srs_stats",
+        "Get the Anki SRS spaced repetition stats, including how many cards are due for review right now.",
+        PropertyList(),
+        [](const PropertyList&) -> ReturnValue {
+            auto stats = SrsDatabase::GetInstance().GetStats();
+            cJSON* obj = cJSON_CreateObject();
+            cJSON_AddNumberToObject(obj, "cards_due_today", stats.cards_due_today);
+            cJSON_AddNumberToObject(obj, "cards_mastered", stats.cards_mastered);
+            cJSON_AddNumberToObject(obj, "total_reviews", stats.total_reviews);
+            cJSON_AddNumberToObject(obj, "current_streak", stats.current_streak);
+            return obj;
+        });
+
+    McpServer::GetInstance().AddTool("quiz.get_due_cards",
+        "Get the exact list of question indices that are currently due for spaced repetition review.",
+        PropertyList(),
+        [](const PropertyList&) -> ReturnValue {
+            auto due = SrsDatabase::GetInstance().GetDueCardIds();
+            cJSON* arr = cJSON_CreateArray();
+            for (uint32_t id : due) {
+                cJSON_AddItemToArray(arr, cJSON_CreateNumber(id));
+            }
+            return arr;
+        });
+        
+    McpServer::GetInstance().AddTool("quiz.schedule_reminder",
+        "Schedule a UI reminder on the screen for a practice session. Pass minutes_from_now.",
+        PropertyList({
+            Property("minutes_from_now", kPropertyTypeInteger, 60, 1, 10000)
+        }),
+        [](const PropertyList& props) -> ReturnValue {
+            int mins = props["minutes_from_now"].value<int>();
+            QuizUI::GetInstance().ScheduleReminder(mins);
+            return true;
         });
 
     RebuildUI();
@@ -233,6 +275,9 @@ void QuizUI::CreateBackgroundBlobs() {
     int b2_size = is_dark ? 150 : 250;
     lv_opa_t b1_opa = is_dark ? LV_OPA_10 : LV_OPA_30;
     lv_opa_t b2_opa = is_dark ? LV_OPA_10 : LV_OPA_20;
+    // Dark mode on ESP32 SPI screens struggles with large translucent overlapping areas (flicker).
+    // Disable Aurora/Static blobs entirely if dark mode is active to ensure rock-solid 60fps.
+    if (is_dark && (settings_.bg_anim == 1 || settings_.bg_anim == 2)) return;
 
     if (settings_.bg_anim == 1 || settings_.bg_anim == 2) {
         // Blob 1
@@ -1047,7 +1092,7 @@ void QuizUI::ShowResult() {
     ml(buf, t_accent_, LV_ALIGN_TOP_MID, 0, 125);
     snprintf(buf, sizeof(buf), "Best Streak: %d", stats_.best_streak);
     ml(buf, t_subtext_, LV_ALIGN_TOP_MID, 0, 153);
-    ml(LV_SYMBOL_RIGHT " restart   " LV_SYMBOL_LEFT " home", t_subtext_, LV_ALIGN_BOTTOM_MID, 0, -10);
+    ml(LV_SYMBOL_OK " home", t_subtext_, LV_ALIGN_BOTTOM_MID, 0, -10);
 
     stats_.session_score = 0; stats_.session_total = 0;
 }
@@ -1084,9 +1129,6 @@ void QuizUI::HandleJoyLeft() {
     switch (mode_) {
         case QuizMode::kHome:     HomeNavigate(-1); break;
         case QuizMode::kQuiz:     if (!ans_revealed_) MoveCursor(-1); else PrevQuestion(); break;
-        case QuizMode::kSettings: ApplySettingsAction(-1); break;
-        case QuizMode::kProgress: ShowHome(); break;
-        case QuizMode::kResult:   ShowHome(); break;
         default: break;
     }
 }
@@ -1095,9 +1137,6 @@ void QuizUI::HandleJoyRight() {
     switch (mode_) {
         case QuizMode::kHome:     HomeNavigate(1); break;
         case QuizMode::kQuiz:     if (!ans_revealed_) MoveCursor(1); else NextQuestion(); break;
-        case QuizMode::kSettings: ApplySettingsAction(1); break;
-        case QuizMode::kProgress: EnterQuiz(); break;
-        case QuizMode::kResult:   q_idx_ = 0; SwitchToPanel(quiz_panel_); DisplayCurrentQuestion(); mode_ = QuizMode::kQuiz; mid_quiz_ = true; break;
         default: break;
     }
 }
@@ -1118,8 +1157,47 @@ void QuizUI::HandleJoyPress() {
             else ApplySettingsAction(1);
             break;
         case QuizMode::kProgress: ShowHome(); break;
+        case QuizMode::kResult:   ShowHome(); break;
         default: break;
     }
 }
 void QuizUI::HandleJoyPressLong() { if (is_visible_ && mode_ == QuizMode::kQuiz) OpenSettings(true); }
 void QuizUI::HandleAgentLongPress() { if (is_visible_) GoHome(); }
+
+void QuizUI::ScheduleReminder(int minutes) {
+    sched_rem_ = minutes;
+    ESP_LOGI(TAG, "Reminder scheduled for %d minutes", minutes);
+}
+
+void QuizUI::OnSchedTick() {
+    if (sched_rem_ > 0) {
+        sched_rem_--;
+        if (sched_rem_ <= 0) {
+            ESP_LOGI(TAG, "Reminder triggered!");
+            if (lvgl_port_lock(-1)) {
+                if (mode_ == QuizMode::kHome && is_visible_) {
+                    PlayUISound(Lang::Sounds::OGG_EXCLAMATION);
+                    SetFeedback("Time for your AI Study Session!", t_accent_);
+                }
+                lvgl_port_unlock();
+            }
+        }
+    }
+    
+    // Autoschedule logic: if cards are due and user is home, remind them every 30 mins
+    static int autosched_ticks = 0;
+    autosched_ticks++;
+    if (autosched_ticks >= 30) {
+        autosched_ticks = 0;
+        int due_count = SrsDatabase::GetInstance().GetDueCount();
+        if (due_count > 0 && mode_ == QuizMode::kHome && is_visible_) {
+            if (lvgl_port_lock(-1)) {
+                PlayUISound(Lang::Sounds::OGG_POPUP);
+                char msg[64];
+                snprintf(msg, sizeof(msg), "You have %d cards due for review!", due_count);
+                SetFeedback(msg, t_primary_);
+                lvgl_port_unlock();
+            }
+        }
+    }
+}

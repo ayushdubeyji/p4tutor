@@ -58,6 +58,7 @@ public:
     // AI MCP Integration Methods
     std::string GetQuestionsJsonString(int offset, int limit) const;
     void NavigateToQuestion(int index);
+    void ScheduleReminder(int minutes);
     
     // Internal quiz state getters
     bool IsInQuiz() const { return mode_ == QuizMode::kQuiz; }
@@ -70,6 +71,7 @@ public:
 
     // Timers
     void OnTimerTick();
+    void OnSchedTick();
 
 private:
     void RebuildUI();
@@ -134,9 +136,11 @@ private:
     uint32_t t_wrong_ = 0xFF3B30;
     lv_opa_t t_glass_opa_;
 
-    // UI
+    // System
     lv_obj_t* screen_ = nullptr;
     lv_obj_t* anim_layer_ = nullptr;
+    esp_timer_handle_t sched_timer_ = nullptr;
+    int sched_rem_ = 0;
     
     // Panels
     lv_obj_t* home_panel_ = nullptr;

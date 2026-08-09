@@ -941,7 +941,20 @@ void LcdDisplay::SetupUI() {
 
     emoji_image_ = lv_img_create(emoji_box_);
     lv_obj_center(emoji_image_);
-    lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
+
+    if (teacher_gif_size > 0) {
+        static const lv_img_dsc_t teacher_dsc = {
+            .header = { .magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_RAW, .flags = 0, .w = 0, .h = 0, .stride = 0, .reserved_2 = 0 },
+            .data_size = teacher_gif_size,
+            .data = teacher_gif_data
+        };
+        gif_controller_ = std::make_unique<LvglGif>(&teacher_dsc);
+        lv_img_set_src(emoji_image_, gif_controller_->image_dsc());
+        gif_controller_->Start();
+        lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
+    }
 
     /* Middle layer: preview_image_ - centered display */
     preview_image_ = lv_image_create(screen);
