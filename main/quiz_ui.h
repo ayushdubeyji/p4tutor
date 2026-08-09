@@ -53,6 +53,7 @@ public:
     void Hide();
     void GoHome();
     void EnterQuiz();
+    void RevealAnswer();
 
     // AI MCP Integration Methods
     std::string GetQuestionsJsonString(int offset, int limit) const;

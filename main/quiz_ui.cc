@@ -5,6 +5,7 @@
 #include <esp_spiffs.h>
 #include <esp_lvgl_port.h>
 #include "assets.h"
+#include "srs_database.h"
 #include <sstream>
 #include <fstream>
 #include <math.h>
@@ -35,21 +36,21 @@ QuizUI::~QuizUI() {
 
 void QuizUI::ApplyThemeConfig() {
     if (settings_.theme_mode == 0) { // Light
-        t_bg_ = 0xF2F2F7;
+        t_bg_ = 0xF6F8FA;
         t_card_ = 0xFFFFFF;
-        t_primary_ = 0x007AFF;
-        t_accent_ = 0x5856D6;
-        t_text_ = 0x000000;
-        t_subtext_ = 0x8E8E93;
+        t_primary_ = 0x08BD80;
+        t_accent_ = 0x0969DA;
+        t_text_ = 0x1F2328;
+        t_subtext_ = 0x6E7781;
         t_correct_ = 0x34C759;
         t_wrong_ = 0xFF3B30;
     } else { // Dark
-        t_bg_ = 0x000000;
-        t_card_ = 0x1C1C1E;
-        t_primary_ = 0x0A84FF;
-        t_accent_ = 0x5E5CE6;
-        t_text_ = 0xFFFFFF;
-        t_subtext_ = 0x98989D;
+        t_bg_ = 0x0D1117;
+        t_card_ = 0x161B22;
+        t_primary_ = 0x238636;
+        t_accent_ = 0x1F6FEB;
+        t_text_ = 0xF0F6FC;
+        t_subtext_ = 0x8B949E;
         t_correct_ = 0x30D158;
         t_wrong_ = 0xFF453A;
     }
@@ -64,7 +65,10 @@ void QuizUI::Initialize() {
         .max_files = 5, .format_if_mount_failed = false,
     };
     esp_err_t ret = esp_vfs_spiffs_register(&conf);
-    if (ret == ESP_OK || ret == ESP_ERR_INVALID_STATE) LoadQuestions();
+    if (ret == ESP_OK || ret == ESP_ERR_INVALID_STATE) {
+        LoadQuestions();
+        SrsDatabase::GetInstance().Initialize("/mcq");
+    }
 
     esp_timer_create_args_t ta = { .callback = quiz_timer_cb, .arg = this, .name = "quiz" };
     esp_timer_create(&ta, &q_timer_);
@@ -101,6 +105,40 @@ void QuizUI::Initialize() {
             return true;
         });
 
+    McpServer::GetInstance().AddTool("quiz.start_quiz",
+        "Open the quiz screen and start a practice test. Call this before navigating to questions.",
+        PropertyList(),
+        [](const PropertyList&) -> ReturnValue {
+            if (lvgl_port_lock(-1)) {
+                QuizUI::GetInstance().Show();
+                QuizUI::GetInstance().EnterQuiz();
+                lvgl_port_unlock();
+            }
+            return true;
+        });
+
+    McpServer::GetInstance().AddTool("quiz.reveal_answer",
+        "Highlight the correct answer for the current question on screen.",
+        PropertyList(),
+        [](const PropertyList&) -> ReturnValue {
+            if (lvgl_port_lock(-1)) {
+                QuizUI::GetInstance().RevealAnswer();
+                lvgl_port_unlock();
+            }
+            return true;
+        });
+
+    McpServer::GetInstance().AddTool("quiz.get_current_state",
+        "Get the current quiz state: which question is displayed, score, and whether answer is revealed.",
+        PropertyList(),
+        [](const PropertyList&) -> ReturnValue {
+            auto& q = QuizUI::GetInstance();
+            cJSON* obj = cJSON_CreateObject();
+            cJSON_AddNumberToObject(obj, "current_index", q.GetCurrentQuestionIndex());
+            cJSON_AddBoolToObject(obj, "in_quiz", q.IsInQuiz());
+            return obj;
+        });
+
     RebuildUI();
 }
 
@@ -130,11 +168,25 @@ std::string QuizUI::GetQuestionsJsonString(int offset, int limit) const {
 void QuizUI::NavigateToQuestion(int index) {
     if (index >= 0 && index < (int)questions_.size()) {
         if (!lvgl_port_lock(-1)) return;
+        if (!is_visible_) Show();
+        if (mode_ != QuizMode::kQuiz) EnterQuiz();
+        ans_revealed_ = false;
+        joy_cursor_ = 0;
+        ResetAllOpts();
         q_idx_ = index;
         CycleBackgroundColor(q_idx_);
         DisplayCurrentQuestion();
         lvgl_port_unlock();
     }
+}
+
+void QuizUI::RevealAnswer() {
+    if (!is_visible_ || mode_ != QuizMode::kQuiz || ans_revealed_) return;
+    const QuizQuestion& q = questions_[q_idx_];
+    ans_revealed_ = true;
+    HighlightOpt(q.ans, t_correct_, t_correct_, t_correct_, 0xFFFFFF, LV_OPA_COVER);
+    char fb[40]; snprintf(fb, sizeof(fb), LV_SYMBOL_OK " Correct answer: %c", 'A' + q.ans);
+    SetFeedback(fb, t_correct_);
 }
 
 void QuizUI::DestroyPanels() {
@@ -400,15 +452,17 @@ void QuizUI::BuildQuizPanel() {
     lv_obj_set_style_border_width(q_card_, 1, 0);
     lv_obj_set_style_border_color(q_card_, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_opa(q_card_, LV_OPA_30, 0);
-    lv_obj_set_style_shadow_width(q_card_, 20, 0);
+    lv_obj_set_style_shadow_width(q_card_, 30, 0);
     lv_obj_set_style_shadow_color(q_card_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_shadow_opa(q_card_, LV_OPA_10, 0);
-    lv_obj_set_style_shadow_ofs_y(q_card_, 5, 0);
+    lv_obj_set_style_shadow_opa(q_card_, LV_OPA_30, 0);
+    lv_obj_set_style_shadow_ofs_y(q_card_, 8, 0);
+    lv_obj_set_style_radius(q_card_, 16, 0);
 
     question_lbl_ = lv_label_create(q_card_);
     lv_label_set_long_mode(question_lbl_, LV_LABEL_LONG_WRAP);
     lv_obj_set_size(question_lbl_, 296, 44);
     lv_obj_set_style_text_color(question_lbl_, lv_color_hex(t_text_), 0);
+    lv_obj_set_style_text_font(question_lbl_, &lv_font_montserrat_14, 0);
 
     q_timer_bar_ = make_bar(quiz_panel_, 6, 101, 308, 5, tb, t_accent_);
 
@@ -418,6 +472,14 @@ void QuizUI::BuildQuizPanel() {
         opt_cards_[i] = lv_obj_create(quiz_panel_);
         lv_obj_set_size(opt_cards_[i], 150, 46); lv_obj_set_pos(opt_cards_[i], opt_xs[i], opt_ys[i]);
         apply_glass_card(opt_cards_[i], t_card_, t_glass_opa_, settings_.theme_mode);
+        // Premium option card depth
+        lv_obj_set_style_shadow_width(opt_cards_[i], 12, 0);
+        lv_obj_set_style_shadow_color(opt_cards_[i], lv_color_hex(0x000000), 0);
+        lv_obj_set_style_shadow_opa(opt_cards_[i], LV_OPA_20, 0);
+        lv_obj_set_style_shadow_ofs_y(opt_cards_[i], 4, 0);
+        lv_obj_set_style_radius(opt_cards_[i], 12, 0);
+        lv_obj_set_style_transform_pivot_x(opt_cards_[i], 75, 0);
+        lv_obj_set_style_transform_pivot_y(opt_cards_[i], 23, 0);
         lv_obj_set_style_pad_all(opt_cards_[i], 0, 0);
         lv_obj_clear_flag(opt_cards_[i], LV_OBJ_FLAG_SCROLLABLE);
 
@@ -433,6 +495,7 @@ void QuizUI::BuildQuizPanel() {
         opt_lbls_[i] = lv_label_create(opt_cards_[i]);
         lv_label_set_long_mode(opt_lbls_[i], LV_LABEL_LONG_SCROLL_CIRCULAR);
         lv_obj_set_width(opt_lbls_[i], 114); lv_obj_align(opt_lbls_[i], LV_ALIGN_LEFT_MID, 32, 0);
+        lv_obj_set_style_text_font(opt_lbls_[i], &lv_font_montserrat_14, 0);
     }
 
     q_feedback_bar_ = make_hdr(quiz_panel_, 20, false, t_card_, t_glass_opa_, settings_.theme_mode);
@@ -700,6 +763,8 @@ void QuizUI::SelectAnswer(int idx) {
         SetFeedback(fb, t_wrong_);
     }
     stats_.total_answered++; stats_.session_total++; UpdateQuizProgress();
+    // Persist result to SRS database for Anki algorithm
+    SrsDatabase::GetInstance().SaveSession(static_cast<uint32_t>(q_idx_), correct);
 }
 
 void QuizUI::SetFeedback(const char* msg, uint32_t bg) {

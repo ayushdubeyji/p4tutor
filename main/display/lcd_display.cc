@@ -1178,6 +1178,35 @@ void LcdDisplay::SetEmotion(const char* emotion) {
             }
             lv_obj_set_style_text_font(emoji_label_, emotion_font, 0);
             lv_label_set_text(emoji_label_, utf8);
+            
+            lv_obj_set_style_transform_scale(emoji_label_, 512, 0);
+            
+            lv_obj_t* target = emoji_box_ != nullptr ? emoji_box_ : emoji_label_;
+            lv_color_t ring_color = lv_color_hex(0xFFFFFF);
+            if (strcmp(emotion, "happy") == 0) ring_color = lv_color_hex(0x00FF00);
+            else if (strcmp(emotion, "sad") == 0) ring_color = lv_color_hex(0x0000FF);
+            else if (strcmp(emotion, "thinking") == 0) ring_color = lv_color_hex(0xFFFF00);
+            else if (strcmp(emotion, "angry") == 0) ring_color = lv_color_hex(0xFF0000);
+            else if (strcmp(emotion, "neutral") == 0) ring_color = lv_color_hex(0x888888);
+            
+            lv_obj_set_style_border_width(target, 4, 0);
+            lv_obj_set_style_border_color(target, ring_color, 0);
+            lv_obj_set_style_radius(target, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_pad_all(target, 10, 0);
+            
+            lv_anim_delete(target, nullptr);
+            lv_anim_t a;
+            lv_anim_init(&a);
+            lv_anim_set_var(&a, target);
+            lv_anim_set_values(&a, LV_OPA_20, LV_OPA_COVER);
+            lv_anim_set_time(&a, 1000);
+            lv_anim_set_playback_time(&a, 1000);
+            lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+            lv_anim_set_exec_cb(&a, [](void* var, int32_t v) {
+                lv_obj_set_style_border_opa((lv_obj_t*)var, v, 0);
+            });
+            lv_anim_start(&a);
+            
             lv_obj_add_flag(emoji_image_, LV_OBJ_FLAG_HIDDEN);
             lv_obj_remove_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
         }
