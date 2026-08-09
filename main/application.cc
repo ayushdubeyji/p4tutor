@@ -12,6 +12,8 @@
 #include "system_info.h"
 #include "text_glyph_payload.h"
 #include "websocket_protocol.h"
+#include "display/home_ui.h"
+#include "display/screen_manager.h"
 
 #include <driver/gpio.h>
 #include <esp_log.h>
@@ -106,16 +108,16 @@ void Application::Initialize() {
 
         switch (event) {
             case NetworkEvent::Scanning:
-                display->ShowNotification(Lang::Strings::SCANNING_WIFI, 30000);
+                display->ShowNotification("Scanning WiFi...", 30000);
                 xEventGroupSetBits(event_group_, MAIN_EVENT_NETWORK_DISCONNECTED);
                 break;
             case NetworkEvent::Connecting: {
                 if (data.empty()) {
                     // Cellular network - registering without carrier info yet
-                    display->SetStatus(Lang::Strings::REGISTERING_NETWORK);
+                    display->SetStatus("Registering network...");
                 } else {
                     // WiFi or cellular with carrier info
-                    std::string msg = Lang::Strings::CONNECT_TO;
+                    std::string msg = "Connecting to ";
                     msg += data;
                     msg += "...";
                     display->ShowNotification(msg.c_str(), 30000);
@@ -123,7 +125,7 @@ void Application::Initialize() {
                 break;
             }
             case NetworkEvent::Connected: {
-                std::string msg = Lang::Strings::CONNECTED_TO;
+                std::string msg = "Connected to ";
                 msg += data;
                 display->ShowNotification(msg.c_str(), 30000);
                 xEventGroupSetBits(event_group_, MAIN_EVENT_NETWORK_CONNECTED);
@@ -140,22 +142,22 @@ void Application::Initialize() {
                 break;
             // Cellular modem specific events
             case NetworkEvent::ModemDetecting:
-                display->SetStatus(Lang::Strings::DETECTING_MODULE);
+                display->SetStatus("Detecting module...");
                 break;
             case NetworkEvent::ModemErrorNoSim:
-                Alert(Lang::Strings::ERROR, Lang::Strings::PIN_ERROR, "warning",
+                Alert("Error", "PIN error", "warning",
                       Lang::Sounds::OGG_ERR_PIN);
                 break;
             case NetworkEvent::ModemErrorRegDenied:
-                Alert(Lang::Strings::ERROR, Lang::Strings::REG_ERROR, "warning",
+                Alert("Error", "Registration error", "warning",
                       Lang::Sounds::OGG_ERR_REG);
                 break;
             case NetworkEvent::ModemErrorInitFailed:
-                Alert(Lang::Strings::ERROR, Lang::Strings::MODEM_INIT_ERROR, "warning",
+                Alert("Error", "Modem init error", "warning",
                       Lang::Sounds::OGG_EXCLAMATION);
                 break;
             case NetworkEvent::ModemErrorTimeout:
-                display->SetStatus(Lang::Strings::REGISTERING_NETWORK);
+                display->SetStatus("Registering network...");
                 break;
         }
     });
@@ -166,8 +168,14 @@ void Application::Initialize() {
     // Update the status bar immediately to show the network state
     display->UpdateStatusBar(true);
 
-    // Initialize Quiz App (LVGL objects created here; Show() handled by state machine)
-    QuizUI::GetInstance().Initialize();
+    // Initialize Quiz App — must hold LVGL lock while creating LVGL objects
+    // Without the lock the LVGL timer task can fire style-refresh events on
+    // half-constructed objects, causing a null-ptr crash in lv_event_send.
+    if (lvgl_port_lock(-1)) {
+        QuizUI::GetInstance().Initialize();
+        HomeUI::GetInstance().Initialize();
+        lvgl_port_unlock();
+    }
 }
 
 void Application::Run() {
@@ -186,7 +194,7 @@ void Application::Run() {
 
         if (bits & MAIN_EVENT_ERROR) {
             SetDeviceState(kDeviceStateIdle);
-            Alert(Lang::Strings::ERROR, last_error_message_.c_str(), "cancel",
+            Alert("Error", last_error_message_.c_str(), "cancel",
                   Lang::Sounds::OGG_EXCLAMATION);
         }
 
@@ -327,7 +335,7 @@ void Application::HandleActivationDoneEvent() {
     has_server_time_ = ota_->HasServerTime();
 
     auto display = Board::GetInstance().GetDisplay();
-    std::string message = std::string(Lang::Strings::VERSION) + ota_->GetCurrentVersion();
+    std::string message = std::string("Version: ") + ota_->GetCurrentVersion();
     display->ShowNotification(message.c_str());
     display->SetChatMessage("system", "");
 
@@ -383,14 +391,14 @@ void Application::CheckAssetsVersion() {
         settings.EraseKey("download_url");
 
         char message[256];
-        snprintf(message, sizeof(message), Lang::Strings::FOUND_NEW_ASSETS, download_url.c_str());
-        Alert(Lang::Strings::LOADING_ASSETS, message, "cloud_download", Lang::Sounds::OGG_UPGRADE);
+        snprintf(message, sizeof(message), "Found new assets %s", download_url.c_str());
+        Alert("Loading assets", message, "cloud_download", Lang::Sounds::OGG_UPGRADE);
 
         // Wait for the audio service to be idle for 3 seconds
         vTaskDelay(pdMS_TO_TICKS(3000));
         SetDeviceState(kDeviceStateUpgrading);
         board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
-        display->SetChatMessage("system", Lang::Strings::PLEASE_WAIT);
+        display->SetChatMessage("system", "Please wait...");
 
         bool success =
             assets.Download(download_url, [this, display](int progress, size_t speed) -> void {
@@ -405,7 +413,7 @@ void Application::CheckAssetsVersion() {
         vTaskDelay(pdMS_TO_TICKS(1000));
 
         if (!success) {
-            Alert(Lang::Strings::ERROR, Lang::Strings::DOWNLOAD_ASSETS_FAILED, "cancel",
+            Alert("Error", "Failed to download assets", "cancel",
                   Lang::Sounds::OGG_EXCLAMATION);
             vTaskDelay(pdMS_TO_TICKS(2000));
             SetDeviceState(kDeviceStateActivating);
@@ -427,7 +435,7 @@ void Application::CheckNewVersion() {
     auto& board = Board::GetInstance();
     while (true) {
         auto display = board.GetDisplay();
-        display->SetStatus(Lang::Strings::CHECKING_NEW_VERSION);
+        display->SetStatus("Checking for new version");
 
         esp_err_t err = ota_->CheckVersion();
         if (err != ESP_OK) {
@@ -441,9 +449,9 @@ void Application::CheckNewVersion() {
             snprintf(error_message, sizeof(error_message), "code=%d, url=%s", err,
                      ota_->GetCheckVersionUrl().c_str());
             char buffer[256];
-            snprintf(buffer, sizeof(buffer), Lang::Strings::CHECK_NEW_VERSION_FAILED, retry_delay,
+            snprintf(buffer, sizeof(buffer), "Failed to check for new version, retry in %d seconds\n%s", retry_delay,
                      error_message);
-            Alert(Lang::Strings::ERROR, buffer, "cloud_off", Lang::Sounds::OGG_EXCLAMATION);
+            Alert("Error", buffer, "cloud_off", Lang::Sounds::OGG_EXCLAMATION);
 
             ESP_LOGW(TAG, "Check new version failed, retry in %d seconds (%d/%d)", retry_delay,
                      retry_count, MAX_RETRY);
@@ -473,7 +481,7 @@ void Application::CheckNewVersion() {
             break;
         }
 
-        display->SetStatus(Lang::Strings::ACTIVATION);
+        display->SetStatus("Activation");
         // Activation code is shown to the user and waiting for the user to input
         if (ota_->HasActivationCode()) {
             ShowActivationCode(ota_->GetActivationCode(), ota_->GetActivationMessage());
@@ -502,7 +510,7 @@ void Application::InitializeProtocol() {
     auto display = board.GetDisplay();
     auto codec = board.GetAudioCodec();
 
-    display->SetStatus(Lang::Strings::LOADING_PROTOCOL);
+    display->SetStatus("Loading protocol...");
 
     if (ota_->HasMqttConfig()) {
         protocol_ = std::make_unique<MqttProtocol>();
@@ -670,7 +678,7 @@ void Application::ShowActivationCode(const std::string& code, const std::string&
          digit_sound{'8', Lang::Sounds::OGG_8}, digit_sound{'9', Lang::Sounds::OGG_9}}};
 
     // This sentence uses 9KB of SRAM, so we need to wait for it to finish
-    Alert(Lang::Strings::ACTIVATION, message.c_str(), "link", Lang::Sounds::OGG_ACTIVATION);
+    Alert("Activation", message.c_str(), "link", Lang::Sounds::OGG_ACTIVATION);
 
     for (const auto& digit : code) {
         auto it = std::find_if(digit_sounds.begin(), digit_sounds.end(),
@@ -696,7 +704,7 @@ void Application::Alert(const char* status, const char* message, const char* emo
 void Application::DismissAlert() {
     if (GetDeviceState() == kDeviceStateIdle) {
         auto display = Board::GetInstance().GetDisplay();
-        display->SetStatus(Lang::Strings::STANDBY);
+        display->SetStatus("Standby");
         display->SetEmotion("neutral");
         display->SetChatMessage("system", "");
     }
@@ -932,19 +940,19 @@ void Application::HandleStateChangedEvent() {
     switch (new_state) {
         case kDeviceStateUnknown:
         case kDeviceStateIdle:
-            display->SetStatus(Lang::Strings::STANDBY);
+            display->SetStatus("Standby");
             display->ClearChatMessages();    // Clear messages first
             display->SetEmotion("neutral");  // Then set emotion (wechat mode checks child count)
             audio_service_.EnableVoiceProcessing(false);
             audio_service_.EnableWakeWordDetection(true);
             break;
         case kDeviceStateConnecting:
-            display->SetStatus(Lang::Strings::CONNECTING);
+            display->SetStatus("Connecting");
             display->SetEmotion("neutral");
             display->SetChatMessage("system", "");
             break;
         case kDeviceStateListening:
-            display->SetStatus(Lang::Strings::LISTENING);
+            display->SetStatus("Listening");
             display->SetEmotion("neutral");
 
             // Make sure the audio processor is running
@@ -963,7 +971,7 @@ void Application::HandleStateChangedEvent() {
             }
             break;
         case kDeviceStateSpeaking:
-            display->SetStatus(Lang::Strings::SPEAKING);
+            display->SetStatus("Speaking");
 
             if (listening_mode_ != kListeningModeRealtime) {
                 audio_service_.EnableVoiceProcessing(false);
@@ -1064,13 +1072,13 @@ bool Application::UpgradeFirmware(const std::string& url, const std::string& ver
     }
     ESP_LOGI(TAG, "Starting firmware upgrade from URL: %s", upgrade_url.c_str());
 
-    Alert(Lang::Strings::OTA_UPGRADE, Lang::Strings::UPGRADING, "download",
+    Alert("OTA Upgrade", "Upgrading...", "download",
           Lang::Sounds::OGG_UPGRADE);
     vTaskDelay(pdMS_TO_TICKS(3000));
 
     SetDeviceState(kDeviceStateUpgrading);
 
-    std::string message = std::string(Lang::Strings::NEW_VERSION) + version_info;
+    std::string message = std::string("New version: ") + version_info;
     display->SetChatMessage("system", message.c_str());
 
     board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
@@ -1091,7 +1099,7 @@ bool Application::UpgradeFirmware(const std::string& url, const std::string& ver
                  "Firmware upgrade failed, restarting audio service and continuing operation...");
         audio_service_.Start();                              // Restart audio service
         board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);  // Restore power save level
-        Alert(Lang::Strings::ERROR, Lang::Strings::UPGRADE_FAILED, "cancel",
+        Alert("Error", "Upgrade failed", "cancel",
               Lang::Sounds::OGG_EXCLAMATION);
         vTaskDelay(pdMS_TO_TICKS(3000));
         return false;
@@ -1172,15 +1180,15 @@ void Application::SetAecMode(AecMode mode) {
         switch (aec_mode_) {
             case kAecOff:
                 audio_service_.EnableDeviceAec(false);
-                display->ShowNotification(Lang::Strings::RTC_MODE_OFF);
+                display->ShowNotification("RTC mode off");
                 break;
             case kAecOnServerSide:
                 audio_service_.EnableDeviceAec(false);
-                display->ShowNotification(Lang::Strings::RTC_MODE_ON);
+                display->ShowNotification("RTC mode on");
                 break;
             case kAecOnDeviceSide:
                 audio_service_.EnableDeviceAec(true);
-                display->ShowNotification(Lang::Strings::RTC_MODE_ON);
+                display->ShowNotification("RTC mode on");
                 break;
         }
 

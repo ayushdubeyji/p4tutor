@@ -7,6 +7,8 @@
 #include <sys/stat.h>
 #include "cJSON.h" // For JSON handling
 #include <esp_lvgl_port.h>
+#include "srs_engine.h"
+
 
 #define TAG "SrsDatabase"
 
@@ -158,8 +160,24 @@ void SrsDatabase::SaveSession(uint32_t card_id, bool correct) {
     rec.total_reviews++;
     if (correct) {
         rec.total_correct++;
+        AddXP(10);
     }
     
+    SrsCard card;
+    card.card_id = rec.card_id;
+    card.due_timestamp = rec.due_timestamp;
+    card.ease_factor = rec.ease_factor;
+    card.interval_days = rec.interval_days;
+    card.repetition_n = rec.repetition_n;
+    
+    SrsGrade grade = SrsEngine::BoolToGrade(correct, 0, 10000);
+    card = SrsEngine::GetInstance().Review(card, grade);
+    
+    rec.due_timestamp = card.due_timestamp;
+    rec.ease_factor = card.ease_factor;
+    rec.interval_days = card.interval_days;
+    rec.repetition_n = card.repetition_n;
+
     UpdateCard(rec);
     
     // Update daily counts JSON
@@ -170,6 +188,11 @@ void SrsDatabase::SaveSession(uint32_t card_id, bool correct) {
         counts.push_back(1);
     }
     SaveDailyCounts(counts);
+}
+
+void SrsDatabase::AddXP(uint32_t xp) {
+    user_xp_ += xp;
+    user_level_ = (user_xp_ / 100) + 1; // 100 XP per level
 }
 
 std::vector<int> SrsDatabase::GetDailyReviewCounts(int days) {

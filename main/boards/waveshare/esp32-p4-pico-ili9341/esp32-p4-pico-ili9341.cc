@@ -3,6 +3,7 @@
 #include "application.h"
 #include "display/lcd_display.h"
 #include "quiz_ui.h"
+#include "display/screen_manager.h"
 #include <esp_lvgl_port.h>
 // #include "display/no_display.h"
 #include "button.h"
@@ -15,6 +16,13 @@
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_ili9341.h"
+
+#include <driver/sdmmc_host.h>
+#include <esp_vfs_fat.h>
+#include <sdmmc_cmd.h>
+#include <sd_pwr_ctrl_by_on_chip_ldo.h>
+#include <freertos/FreeRTOS.h>
+#include <esp_ldo_regulator.h>
 
 #include "config.h"
 #include "lcd_init_cmds.h"
@@ -34,7 +42,8 @@ private:
     Button agent_btn_;
     SpiLcdDisplay* display_ = nullptr;
     EspVideo* camera_ = nullptr;
-
+    sdmmc_card_t* sd_card_ = nullptr;
+    bool sd_card_mounted_ = false;
 
     esp_err_t i2c_device_probe(uint8_t addr) {
         return i2c_master_probe(i2c_bus_, addr, 100);
@@ -167,6 +176,21 @@ private:
         lvgl_port_add_touch(&touch_cfg);
         ESP_LOGI(TAG, "Touch panel initialized successfully");
     }
+    void InitializeCameraPower() {
+        // Power on MIPI CSI/DSI PHY
+        esp_ldo_channel_config_t ldo_cfg = {
+            .chan_id = 3,
+            .voltage_mv = 2500,
+        };
+        esp_ldo_channel_handle_t ldo_mipi_phy = NULL;
+        esp_err_t err = esp_ldo_acquire_channel(&ldo_cfg, &ldo_mipi_phy);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "MIPI PHY LDO channel 3 acquired and powered on");
+        } else {
+            ESP_LOGE(TAG, "Failed to acquire MIPI PHY LDO channel 3: %s", esp_err_to_name(err));
+        }
+    }
+
     void InitializeCamera() {
         esp_video_init_csi_config_t base_csi_config = {
             .sccb_config = {
@@ -193,10 +217,18 @@ private:
             }
             app.ToggleChatState();
         });
-        
-        agent_btn_.OnClick([this]() {
-            auto& app = Application::GetInstance();
-            app.ToggleChatState();
+        boot_button_.OnPressDown([this]() {
+            Application::GetInstance().StartListening();
+        });
+        boot_button_.OnPressUp([this]() {
+            Application::GetInstance().StopListening();
+        });
+
+        agent_btn_.OnPressDown([this]() {
+            Application::GetInstance().StartListening();
+        });
+        agent_btn_.OnPressUp([this]() {
+            Application::GetInstance().StopListening();
         });
 
         // FIX C3: Wrap LVGL calls with display lock — OnClick fires from timer task
@@ -206,15 +238,69 @@ private:
         btn_c_.OnClick([]() { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleButtonC(); lvgl_port_unlock(); } });
         btn_d_.OnClick([]() { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleButtonD(); lvgl_port_unlock(); } });
 
-        joy_up_.OnClick([]()    { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyUp();    lvgl_port_unlock(); } });
-        joy_down_.OnClick([]()  { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyDown();  lvgl_port_unlock(); } });
-        joy_left_.OnClick([]()  { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyLeft();  lvgl_port_unlock(); } });
-        joy_right_.OnClick([]() { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyRight(); lvgl_port_unlock(); } });
-        joy_press_.OnClick([]() { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyPress(); lvgl_port_unlock(); } });
+        joy_up_.OnClick([]()    { if (lvgl_port_lock(-1)) { ScreenManager::GetInstance().HandleJoyUp();    lvgl_port_unlock(); } });
+        joy_down_.OnClick([]()  { if (lvgl_port_lock(-1)) { ScreenManager::GetInstance().HandleJoyDown();  lvgl_port_unlock(); } });
+        joy_left_.OnClick([]()  { if (lvgl_port_lock(-1)) { /* ScreenManager left not implemented yet */  lvgl_port_unlock(); } });
+        joy_right_.OnClick([]() { if (lvgl_port_lock(-1)) { /* ScreenManager right not implemented yet */ lvgl_port_unlock(); } });
+        joy_press_.OnClick([]() { if (lvgl_port_lock(-1)) { ScreenManager::GetInstance().HandleJoySelect(); lvgl_port_unlock(); } });
 
         // Long-press: joy_press opens settings from quiz; agent_btn returns home
         joy_press_.OnLongPress([]()  { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleJoyPressLong();  lvgl_port_unlock(); } });
         agent_btn_.OnLongPress([]()  { if (lvgl_port_lock(-1)) { QuizUI::GetInstance().HandleAgentLongPress(); lvgl_port_unlock(); } });
+    }
+
+    static esp_err_t custom_sdmmc_host_init() {
+        esp_err_t err = sdmmc_host_init();
+        if (err == ESP_ERR_NOT_FOUND || err == ESP_ERR_INVALID_STATE) {
+            return ESP_OK; // Already initialized by esp_hosted Wi-Fi module
+        }
+        return err;
+    }
+
+    void InitializeSdCard() {
+        ESP_LOGI(TAG, "Initializing SD card");
+
+        sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+        host.slot = SDMMC_HOST_SLOT_0;
+        host.init = &custom_sdmmc_host_init;
+        host.max_freq_khz = SDMMC_FREQ_DEFAULT;
+
+        sd_pwr_ctrl_ldo_config_t ldo_config = {
+            .ldo_chan_id = 4,
+        };
+        sd_pwr_ctrl_handle_t pwr_ctrl_handle = NULL;
+        esp_err_t pwr_err = sd_pwr_ctrl_new_on_chip_ldo(&ldo_config, &pwr_ctrl_handle);
+        if (pwr_err == ESP_OK) {
+            host.pwr_ctrl_handle = pwr_ctrl_handle;
+        } else {
+            ESP_LOGW(TAG, "Failed to init LDO power control: %s", esp_err_to_name(pwr_err));
+        }
+
+        sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
+        slot.clk = GPIO_NUM_43;
+        slot.cmd = GPIO_NUM_44;
+        slot.d0 = GPIO_NUM_39;
+        slot.d1 = GPIO_NUM_40;
+        slot.d2 = GPIO_NUM_41;
+        slot.d3 = GPIO_NUM_42;
+        slot.cd = SDMMC_SLOT_NO_CD;
+        slot.wp = SDMMC_SLOT_NO_WP;
+        slot.width = 4;
+        slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
+
+        const esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+            .format_if_mount_failed = false,
+            .max_files = 5,
+            .allocation_unit_size = 64 * 1024,
+        };
+
+        esp_err_t ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot, &mount_config, &sd_card_);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to mount SD card: %s", esp_err_to_name(ret));
+        } else {
+            sd_card_mounted_ = true;
+            ESP_LOGI(TAG, "SD card mounted successfully");
+        }
     }
 
 public:
@@ -225,10 +311,18 @@ public:
         agent_btn_(PIN_AGENT_BTN) {
         InitializeCodecI2c();
         InitializeLCD();
+        InitializeCameraPower();
         InitializeTouch();
         InitializeCamera();
         InitializeButtons();
+        InitializeSdCard();
         GetBacklight()->RestoreBrightness();
+    }
+
+    ~WaveshareEsp32p4() {
+        if (sd_card_mounted_) {
+            esp_vfs_fat_sdcard_unmount("/sdcard", sd_card_);
+        }
     }
 
     virtual AudioCodec* GetAudioCodec() override {

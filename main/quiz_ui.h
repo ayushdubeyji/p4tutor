@@ -5,6 +5,8 @@
 #include <string_view>
 #include <esp_timer.h>
 #include <lvgl.h>
+#include "pomodoro_timer.h"
+#include "display/screen_manager.h"
 
 struct QuizQuestion {
     std::string q;
@@ -38,7 +40,7 @@ enum class QuizMode {
     kHome, kQuiz, kSettings, kProgress, kResult
 };
 
-class QuizUI {
+class QuizUI : public Screen {
 public:
     static QuizUI& GetInstance() {
         static QuizUI instance;
@@ -49,8 +51,9 @@ public:
     ~QuizUI();
 
     void Initialize();
-    void Show(lv_obj_t* default_screen = nullptr);
-    void Hide();
+    void Show(lv_obj_t* default_screen);
+    void Show() override { Show(nullptr); }
+    void Hide() override;
     void GoHome();
     void EnterQuiz();
     void RevealAnswer();
@@ -66,13 +69,16 @@ public:
 
     // Buttons
     void HandleButtonA(); void HandleButtonB(); void HandleButtonC(); void HandleButtonD();
-    void HandleJoyUp(); void HandleJoyDown(); void HandleJoyLeft(); void HandleJoyRight();
+    void HandleJoyUp() override; void HandleJoyDown() override; void HandleJoyLeft(); void HandleJoyRight();
+    void HandleJoySelect() override { HandleJoyPress(); }
     void HandleJoyPress(); void HandleJoyPressLong(); void HandleAgentLongPress();
 
     // Timers
     void OnTimerTick();
     void OnSchedTick();
 
+    void UpdatePomodoroOverlay();
+    
 private:
     void RebuildUI();
     void ApplyThemeConfig();
@@ -147,6 +153,8 @@ private:
     lv_obj_t* quiz_panel_ = nullptr;
     lv_obj_t* settings_panel_ = nullptr;
     lv_obj_t* progress_panel_ = nullptr;
+    lv_obj_t* pomodoro_overlay_ = nullptr;
+    lv_obj_t* pomodoro_lbl_ = nullptr;
 
     // Home
     static const int kMenuCount = 4;
@@ -155,7 +163,8 @@ private:
     lv_obj_t* h_menu_lbl_[kMenuCount];
     lv_obj_t* h_title_lbl_; lv_obj_t* h_sub_lbl_; lv_obj_t* h_arc_; lv_obj_t* h_arc_lbl_;
     lv_obj_t* h_stats_lbl_; lv_obj_t* h_stat_bar_; lv_obj_t* h_footer_lbl_;
-
+    lv_obj_t* h_xp_lbl_;
+    
     // Quiz
     bool ans_revealed_ = false;
     int selected_ans_ = -1;

@@ -1,8 +1,7 @@
 #ifndef LCD_DISPLAY_H
 #define LCD_DISPLAY_H
-
-#include "gif/lvgl_gif.h"
 #include "lvgl_display.h"
+#include "avatar_player.h"
 
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
@@ -26,9 +25,9 @@ protected:
     lv_obj_t* preview_image_ = nullptr;
     lv_obj_t* emoji_label_ = nullptr;
     lv_obj_t* emoji_image_ = nullptr;
-    std::unique_ptr<LvglGif> gif_controller_ = nullptr;
     lv_obj_t* emoji_box_ = nullptr;
     lv_obj_t* chat_message_label_ = nullptr;
+    AvatarPlayer* avatar_player_ = nullptr;
     esp_timer_handle_t preview_timer_ = nullptr;
     std::unique_ptr<LvglImage> preview_image_cached_ = nullptr;
     bool hide_subtitle_ = false;  // Control whether to hide chat messages/subtitles
@@ -36,6 +35,8 @@ protected:
     lv_obj_t* boot_overlay_ = nullptr;
     lv_obj_t* boot_spinner_ = nullptr;
     lv_obj_t* boot_lbl_ = nullptr;
+    lv_obj_t* screen_ = nullptr;           // LCD display's own private screen
+    bool boot_dismissed_ = false;  // Once true, boot overlay never re-appears
 
     void InitializeLcdThemes();
     virtual bool Lock(int timeout_ms = 0) override;

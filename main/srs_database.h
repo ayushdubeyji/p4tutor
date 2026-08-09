@@ -42,6 +42,10 @@ public:
     int GetDueCount();
     void SaveSession(uint32_t card_id, bool correct);
     
+    uint32_t GetUserXP() const { return user_xp_; }
+    uint16_t GetUserLevel() const { return user_level_; }
+    void AddXP(uint32_t xp);
+    
     void ShowAnalyticsUI(lv_obj_t* parent);
 
 private:
@@ -54,6 +58,9 @@ private:
     std::string bin_path_;
     std::string json_path_;
     std::vector<SrsRecord> records_;
+
+    uint32_t user_xp_ = 0;
+    uint16_t user_level_ = 1;
 
     void LoadDatabase();
     void SaveDatabase();
