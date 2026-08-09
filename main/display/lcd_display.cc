@@ -3,6 +3,7 @@
 #include "gif/lvgl_gif.h"
 #include "lvgl_theme.h"
 #include "settings.h"
+#include "teacher_gif.h"
 
 #include <esp_err.h>
 #include <esp_log.h>
@@ -495,12 +496,63 @@ void LcdDisplay::SetupUI() {
     lv_obj_align(emoji_image_, LV_ALIGN_TOP_MID, 0,
                  text_font->line_height + lvgl_theme->spacing(8));
 
-    // Display AI logo while booting
-    emoji_label_ = lv_label_create(screen);
-    lv_obj_center(emoji_label_);
-    lv_obj_set_style_text_font(emoji_label_, large_icon_font, 0);
-    lv_obj_set_style_text_color(emoji_label_, lvgl_theme->text_color(), 0);
-    lv_label_set_text(emoji_label_, MATERIAL_SYMBOLS_ROBOT_2);
+    if (teacher_gif_size > 0) {
+        static const lv_img_dsc_t teacher_dsc = {
+            .header = { .magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_RAW, .flags = 0, .w = 0, .h = 0, .stride = 0, .reserved_2 = 0 },
+            .data_size = teacher_gif_size,
+            .data = teacher_gif_data
+        };
+        gif_controller_ = std::make_unique<LvglGif>(&teacher_dsc);
+        lv_img_set_src(emoji_image_, gif_controller_->image_dsc());
+        gif_controller_->Start();
+    } else {
+        emoji_image_ = lv_canvas_create(screen);
+        static lv_color_t cbuf[LV_CANVAS_BUF_SIZE_TRUE_COLOR(80, 80)];
+        lv_canvas_set_buffer(emoji_image_, cbuf, 80, 80, LV_COLOR_FORMAT_NATIVE);
+        lv_obj_align(emoji_image_, LV_ALIGN_CENTER, 0, 0);
+        
+        lv_timer_create([](lv_timer_t *t) {
+            lv_obj_t *canvas = (lv_obj_t*)lv_timer_get_user_data(t);
+            static int blink_counter = 0;
+            blink_counter++;
+            bool is_blink = (blink_counter % 20) == 0;
+            
+            lv_canvas_fill_bg(canvas, lv_color_hex(0x000000), LV_OPA_COVER);
+            lv_layer_t layer;
+            lv_canvas_init_layer(canvas, &layer);
+            
+            lv_draw_rect_dsc_t face;
+            lv_draw_rect_dsc_init(&face);
+            face.bg_color = lv_color_hex(0xFFDD00);
+            face.radius = 40;
+            lv_area_t face_area = {0, 0, 80, 80};
+            lv_draw_rect(&layer, &face, &face_area);
+            
+            lv_draw_rect_dsc_t eye;
+            lv_draw_rect_dsc_init(&eye);
+            eye.bg_color = lv_color_hex(0x000000);
+            
+            if (!is_blink) {
+                lv_area_t leye = {20, 25, 30, 45};
+                lv_area_t reye = {50, 25, 60, 45};
+                lv_draw_rect(&layer, &eye, &leye);
+                lv_draw_rect(&layer, &eye, &reye);
+            } else {
+                lv_area_t leye = {20, 33, 30, 37};
+                lv_area_t reye = {50, 33, 60, 37};
+                lv_draw_rect(&layer, &eye, &leye);
+                lv_draw_rect(&layer, &eye, &reye);
+            }
+            
+            lv_draw_arc_dsc_t mouth;
+            lv_draw_arc_dsc_init(&mouth);
+            mouth.color = lv_color_hex(0x000000);
+            mouth.width = 4;
+            lv_draw_arc(&layer, &mouth, 40, 50, 20, 10, 170);
+            
+            lv_canvas_finish_layer(canvas, &layer);
+        }, 100, emoji_image_);
+    }
 
     /* Boot Screen Overlay */
     boot_overlay_ = lv_obj_create(screen);
